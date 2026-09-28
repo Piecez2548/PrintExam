@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { coursesApi } from '../../api/courses';
 import { schedulesApi } from '../../api/schedules';
-import { usersApi } from '../../api/users';
-import { Course, ExamSchedule, User, UserRole } from '../../types';
+import { Course, ExamSchedule } from '../../types';
+import { addCalendarDays, formatDateOnlyThai, formatDateOnlyThaiShort, toDateInputValue } from '../../utils/dateOnly';
 import { Modal } from '../../components/common/Modal';
 import { useToast } from '../../context/ToastContext';
-import { useAuth } from '../../context/AuthContext';
 import {
   CalendarCheck,
   Plus,
@@ -21,36 +20,10 @@ import {
   Layers,
 } from 'lucide-react';
 
-// Helper to format Date to strict YYYY-MM-DD
-const toDateInputValue = (val?: string | Date): string => {
-  if (!val) return '';
-  const d = typeof val === 'string' ? new Date(val) : val;
-  if (isNaN(d.getTime())) return '';
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-// Helper for Thai full date display
-const formatThaiDateFull = (val?: string): string => {
-  if (!val) return '';
-  const d = new Date(val);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('th-TH', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-};
-
 export const CourseSchedulePage: React.FC = () => {
   const toast = useToast();
-  const { user } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
   const [schedules, setSchedules] = useState<ExamSchedule[]>([]);
-  const [instructors, setInstructors] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<'courses' | 'schedules'>('courses');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -67,24 +40,33 @@ export const CourseSchedulePage: React.FC = () => {
   const [endTime, setEndTime] = useState('12:00');
   const [room, setRoom] = useState('');
   const [deadlineDate, setDeadlineDate] = useState('');
+  const [deadlineManuallyEdited, setDeadlineManuallyEdited] = useState(false);
   const [editingSchedId, setEditingSchedId] = useState<number | null>(null);
 
   const fetchData = async () => {
-    try {
-      setIsLoading(true);
-      const [cList, sList, uList] = await Promise.all([
-        coursesApi.getCourses({ all: true }),
-        schedulesApi.getSchedules({ all: true }),
-        usersApi.getUsers({ role: UserRole.INSTRUCTOR }),
-      ]);
-      setCourses(cList);
-      setSchedules(sList);
-      setInstructors(uList);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
+    setIsLoading(true);
+    const [coursesResult, schedulesResult] = await Promise.allSettled([
+      coursesApi.getCourses({ all: true }),
+      schedulesApi.getSchedules({ all: true }),
+    ]);
+
+    if (coursesResult.status === 'fulfilled') {
+      setCourses(coursesResult.value);
+    } else {
+      setCourses([]);
+      console.error('[Course Schedule] Failed to load courses', coursesResult.reason);
+      toast.error('ไม่สามารถโหลดรายวิชาได้', 'กรุณาลองใหม่อีกครั้ง');
     }
+
+    if (schedulesResult.status === 'fulfilled') {
+      setSchedules(schedulesResult.value);
+    } else {
+      setSchedules([]);
+      console.error('[Course Schedule] Failed to load schedules', schedulesResult.reason);
+      toast.error('ไม่สามารถโหลดกำหนดการสอบได้', 'กรุณาลองใหม่อีกครั้ง');
+    }
+
+    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -118,16 +100,35 @@ export const CourseSchedulePage: React.FC = () => {
   const scheduledCourseIds = new Set(schedules.map((s) => s.course_id));
   const coursesWithoutSchedule = courses.filter((c) => !scheduledCourseIds.has(c.id));
 
+  // Instructor metadata is already included in each course response. Derive
+  // the filter options locally so an Admin-only user listing failure cannot
+  // prevent courses and schedules from loading.
+  const instructors = Array.from(
+    new Map(
+      courses.map((course) => [course.instructor_id, {
+        id: course.instructor_id,
+        full_name: course.instructor_name || `Instructor #${course.instructor_id}`,
+        department: course.instructor_department,
+      }]),
+    ).values(),
+  ).sort((a, b) => a.full_name.localeCompare(b.full_name));
+
   const handleExamDateChange = (val: string) => {
     setSchedDate(val);
-    if (val) {
-      const examD = new Date(val);
-      if (!isNaN(examD.getTime())) {
-        const deadline = new Date(examD);
-        deadline.setDate(deadline.getDate() - 5);
-        setDeadlineDate(toDateInputValue(deadline));
-      }
+    if (!val) {
+      if (!deadlineManuallyEdited) setDeadlineDate('');
+      return;
     }
+    if (!deadlineManuallyEdited) {
+      setDeadlineDate(addCalendarDays(val, -5));
+    } else if (deadlineDate && deadlineDate >= val) {
+      toast.warning('กำหนดส่งไม่ถูกต้อง', 'Deadline ที่เลือกต้องอยู่ก่อนวันสอบใหม่');
+    }
+  };
+
+  const handleDeadlineDateChange = (val: string) => {
+    setDeadlineManuallyEdited(true);
+    setDeadlineDate(val);
   };
 
   // Save Schedule
@@ -135,6 +136,10 @@ export const CourseSchedulePage: React.FC = () => {
     e.preventDefault();
     if (!schedCourseId || !schedDate || !startTime || !endTime || !room || !deadlineDate) {
       toast.warning('กรุณากรอกข้อมูลกำหนดการสอบให้ครบถ้วน');
+      return;
+    }
+    if (deadlineDate >= schedDate) {
+      toast.warning('กำหนดส่งไม่ถูกต้อง', 'Deadline ต้องอยู่ก่อนวันสอบ');
       return;
     }
 
@@ -173,14 +178,10 @@ export const CourseSchedulePage: React.FC = () => {
   const resetSchedForm = () => {
     setSchedCourseId(courses.length > 0 ? courses[0].id.toString() : '');
     setSchedType('FINAL');
-    const defaultExam = new Date();
-    defaultExam.setDate(defaultExam.getDate() + 14);
-    const defaultExamStr = toDateInputValue(defaultExam);
+    const defaultExamStr = addCalendarDays(toDateInputValue(new Date()), 14);
     setSchedDate(defaultExamStr);
-
-    const defaultDead = new Date(defaultExam);
-    defaultDead.setDate(defaultDead.getDate() - 5);
-    setDeadlineDate(toDateInputValue(defaultDead));
+    setDeadlineManuallyEdited(false);
+    setDeadlineDate(addCalendarDays(defaultExamStr, -5));
 
     setStartTime('09:00');
     setEndTime('12:00');
@@ -208,6 +209,7 @@ export const CourseSchedulePage: React.FC = () => {
     setEndTime(sched.end_time || '12:00');
     setRoom(sched.room || '');
     setDeadlineDate(toDateInputValue(sched.deadline_date));
+    setDeadlineManuallyEdited(true);
     setIsSchedModalOpen(true);
   };
 
@@ -500,7 +502,7 @@ export const CourseSchedulePage: React.FC = () => {
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="font-medium text-slate-800 dark:text-slate-200">
-                          {new Date(sched.exam_date).toLocaleDateString('th-TH')}
+                          {formatDateOnlyThaiShort(sched.exam_date)}
                         </div>
                         <div className="text-[11px] text-slate-500">
                           {sched.start_time} - {sched.end_time} น.
@@ -510,7 +512,7 @@ export const CourseSchedulePage: React.FC = () => {
                         {sched.room}
                       </td>
                       <td className="py-3.5 px-4 text-slate-600">
-                        {new Date(sched.deadline_date).toLocaleDateString('th-TH')}
+                        {formatDateOnlyThaiShort(sched.deadline_date)}
                       </td>
                       <td className="py-3.5 px-4">
                         {sched.status === 'CONFIRMED' ? (
@@ -604,7 +606,7 @@ export const CourseSchedulePage: React.FC = () => {
               />
               {schedDate && (
                 <div className="text-[11px] text-blue-600 dark:text-blue-400 mt-1 font-medium">
-                  {formatThaiDateFull(schedDate)}
+                  {formatDateOnlyThai(schedDate)}
                 </div>
               )}
             </div>
@@ -656,18 +658,18 @@ export const CourseSchedulePage: React.FC = () => {
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
               วันสุดท้ายที่อาจารย์ต้องส่งไฟล์ (Deadline Date) *
             </label>
-            <input
-              type="date"
-              value={deadlineDate}
-              onChange={(e) => setDeadlineDate(e.target.value)}
-              required
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold"
-            />
-            {deadlineDate && (
-              <div className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 font-medium">
-                Deadline: {formatThaiDateFull(deadlineDate)} (อาจารย์สามารถแก้ไขข้อสอบได้ก่อนกำหนดนี้อย่างน้อย 2 วัน)
-              </div>
-            )}
+              <input
+                type="date"
+                value={deadlineDate}
+                onChange={(e) => handleDeadlineDateChange(e.target.value)}
+                required
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold"
+              />
+              {deadlineDate && (
+                <div className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 font-medium">
+                Deadline: {formatDateOnlyThai(deadlineDate)} (ระบบกำหนดค่าเริ่มต้นก่อนวันสอบ 5 วัน สามารถปรับเปลี่ยนได้ตามความเหมาะสม)
+                </div>
+              )}
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
