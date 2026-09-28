@@ -8,6 +8,7 @@ import { JWT_SECRET, TWO_FACTOR_EXPIRY_MINUTES } from '../config/constants';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { recordAuditLog } from '../middleware/audit';
 import { UserRole } from '../../generated/prisma';
+import { isPrivateDemoOtpLoggingEnabled } from '../config/otp';
 
 const router = Router();
 
@@ -104,8 +105,10 @@ router.post('/login', loginLimiter, async (req: Request, res: Response): Promise
     });
 
     // Demo delivery channel: keep the OTP off the browser/API and show it only in the backend terminal.
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[2FA OTP] ผู้ใช้ ${user.username} | รหัส ${otpCode} | หมดอายุ ${expiresAt.toLocaleString('th-TH')}`);
+    const privateDemoOtpLogging = isPrivateDemoOtpLoggingEnabled();
+    if (process.env.NODE_ENV !== 'production' || privateDemoOtpLogging) {
+      const logPrefix = privateDemoOtpLogging ? '[PRIVATE DEMO OTP]' : '[2FA OTP]';
+      console.log(`${logPrefix} ผู้ใช้ ${user.username} | รหัส ${otpCode} | หมดอายุ ${expiresAt.toLocaleString('th-TH')}`);
     }
 
     // H-4: ไม่ส่งข้อมูล user กลับมาก่อนยืนยัน 2FA เพื่อป้องกัน user enumeration

@@ -186,6 +186,12 @@ external dependencies; development ใช้ local username/password + OTP แ�
 `[2FA OTP] ...` แสดง OTP ที่สร้างขึ้นสำหรับการทดสอบในเครื่องเท่านั้น หาก redirect
 output ไปยังไฟล์ ให้ดูไฟล์ log ของ backend ด้วยเครื่องมือ local-only ที่ผู้ดูแลเลือก
 
-เมื่อรัน production ระบบจะไม่ log OTP เด็ดขาด การยืนยันตัวตนของมหาวิทยาลัยจริง
+เมื่อรัน production โดยไม่ได้เปิด private demo flag ระบบจะไม่ log OTP การยืนยันตัวตนของมหาวิทยาลัยจริง
 เช่น University SSO หรือบริการ OTP ภายนอกยังเป็น external integration และไม่ได้
 ถูกแทนที่ด้วย development OTP นี้
+
+สำหรับ public demo บน Railway ให้คง `NODE_ENV=production` และปิด
+`ENABLE_PRIVATE_DEMO_OTP_LOG` เป็นค่าเริ่มต้น หากผู้ดูแลอนุมัติการสาธิตแบบ private
+จึงเปิด flag นี้ใน backend service เท่านั้น แล้วดู OTP จาก private Railway log console
+โดยตรง ห้ามใส่ flag นี้ใน `VITE_*`, ห้ามสร้าง OTP viewer/API และห้ามเปิดเผย OTP
+ผ่าน frontend หรือ WebSocket

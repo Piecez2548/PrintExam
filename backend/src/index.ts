@@ -11,6 +11,7 @@ import { seedDatabase } from './database/seeder';
 import { initWebSocketServer } from './services/wsService';
 import { auditMiddleware } from './middleware/audit';
 import { authenticateToken, AuthRequest } from './middleware/auth';
+import { ensureUploadDir } from './config/upload';
 
 // Import Routes
 import authRoutes from './routes/authRoutes';
@@ -26,7 +27,7 @@ import notificationRoutes from './routes/notificationRoutes';
 
 const app = express();
 const server = http.createServer(app);
-const PORT = process.env.PORT || 4000;
+const PORT = Number(process.env.PORT) || 4000;
 
 /**
  * Production รับคำขอจากโดเมนที่กำหนดใน FRONTEND_URL เท่านั้น
@@ -38,10 +39,7 @@ const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
   .filter(Boolean);
 
 // Ensure upload directory exists
-const uploadDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+const uploadDir = ensureUploadDir();
 
 // Create sample mock files if not present for instant preview
 const mockDocx = path.join(uploadDir, 'mock-exam-cpe101.docx');
@@ -130,7 +128,7 @@ async function startServer() {
     await initializeDatabase();
     await seedDatabase();
 
-    server.listen(PORT, () => {
+    server.listen(PORT, '0.0.0.0', () => {
       console.log(`====================================================`);
       console.log(`🚀 PrintExam Backend API Server running on port ${PORT}`);
       console.log(`📡 WebSocket endpoint ready at ws://localhost:${PORT}/ws`);

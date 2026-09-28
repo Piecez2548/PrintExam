@@ -1,6 +1,5 @@
 import { Router, Response } from 'express';
 import fs from 'fs';
-import path from 'path';
 import { prisma } from '../database/prisma';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
@@ -11,20 +10,12 @@ import { broadcastEvent } from '../services/wsService';
 import { createNotification, notifyRole } from '../services/notificationService';
 import { ExamStatus, UserRole, Prisma } from '../../generated/prisma';
 import { canAccessExamFile as canAccessExamFileByRole } from '../security/examAccess';
+import { resolveUploadFilePath } from '../config/upload';
 
 const router = Router();
 
 function resolveExamFilePath(fileUrl: string | null): string | null {
-  const uploadPrefix = '/uploads/';
-  if (!fileUrl || !fileUrl.startsWith(uploadPrefix)) return null;
-
-  const filename = path.basename(fileUrl.slice(uploadPrefix.length));
-  if (!filename || filename === '.' || filename === '..') return null;
-
-  const uploadDir = path.resolve(__dirname, '../../uploads');
-  const filePath = path.resolve(uploadDir, filename);
-  if (filePath !== uploadDir && !filePath.startsWith(`${uploadDir}${path.sep}`)) return null;
-  return filePath;
+  return resolveUploadFilePath(fileUrl);
 }
 
 /** ตรวจสิทธิ์แก้ไข/ยกเลิก: ต้องยังไม่ตัดข้อสอบ และเหลือเวลาก่อน deadline มากกว่า 2 วัน */

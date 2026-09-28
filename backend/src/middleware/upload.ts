@@ -2,11 +2,9 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES } from '../config/constants';
+import { ensureUploadDir } from '../config/upload';
 
-const uploadDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+const uploadDir = ensureUploadDir();
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
