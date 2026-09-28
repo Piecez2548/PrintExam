@@ -170,3 +170,22 @@ npm run build
 รายงาน และ CSV export. University SSO/ระบบ OTP ภายนอกและเครื่องพิมพ์จริงยังเป็น
 external dependencies; development ใช้ local username/password + OTP และบันทึก
 สถานะการพิมพ์ในระบบแทนการสั่งงานเครื่องพิมพ์จริง
+
+### Local demo authentication and development OTP
+
+การสาธิตในเครื่องใช้บัญชี demo ที่มีอยู่ใน PrintExam-Dev และให้ผู้ดูแลกำหนด
+รหัสผ่านผ่านกลไก local-only เท่านั้น ห้ามบันทึกรหัสผ่านไว้ใน README, source code,
+หรือ log ที่ commit เข้า repository
+
+หลังจากตรวจ username/password สำเร็จ ระบบจะสร้าง OTP 6 หลักใหม่แบบสุ่มทุกครั้ง
+และ OTP มีอายุ 3 นาที ผู้ใช้ต้องกรอก OTP ในหน้าเว็บตามปกติ ระบบจะไม่แสดง OTP
+บน frontend และจะไม่ข้ามขั้นตอน 2FA
+
+สำหรับ development ที่ `NODE_ENV` ไม่ใช่ `production` ให้เปิด backend ด้วย
+`npm run dev` แล้วดู terminal เดียวกับ backend หลังจาก login จะมีบรรทัดรูปแบบ
+`[2FA OTP] ...` แสดง OTP ที่สร้างขึ้นสำหรับการทดสอบในเครื่องเท่านั้น หาก redirect
+output ไปยังไฟล์ ให้ดูไฟล์ log ของ backend ด้วยเครื่องมือ local-only ที่ผู้ดูแลเลือก
+
+เมื่อรัน production ระบบจะไม่ log OTP เด็ดขาด การยืนยันตัวตนของมหาวิทยาลัยจริง
+เช่น University SSO หรือบริการ OTP ภายนอกยังเป็น external integration และไม่ได้
+ถูกแทนที่ด้วย development OTP นี้
