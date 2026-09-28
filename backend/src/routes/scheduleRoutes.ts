@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { UserRole, ExamType, ScheduleStatus, Prisma } from '../../generated/prisma';
 import { recordAuditLog } from '../middleware/audit';
+import { isDateOnlyBefore, isValidDateOnly } from '../utils/dateOnly';
 
 const router = Router();
 
@@ -15,12 +16,10 @@ function validateScheduleValues(input: {
 }): string | null {
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
   const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
-  const examDate = new Date(input.examDate);
-  const deadlineDate = new Date(input.deadlineDate);
-  if ((!datePattern.test(input.examDate) && Number.isNaN(examDate.getTime())) || Number.isNaN(examDate.getTime())) {
+  if (!datePattern.test(input.examDate) || !isValidDateOnly(input.examDate)) {
     return 'รูปแบบวันสอบไม่ถูกต้อง';
   }
-  if ((!datePattern.test(input.deadlineDate) && Number.isNaN(deadlineDate.getTime())) || Number.isNaN(deadlineDate.getTime())) {
+  if (!datePattern.test(input.deadlineDate) || !isValidDateOnly(input.deadlineDate)) {
     return 'รูปแบบ Deadline ไม่ถูกต้อง';
   }
   if (!timePattern.test(input.startTime) || !timePattern.test(input.endTime)) {
@@ -29,7 +28,7 @@ function validateScheduleValues(input: {
   if (input.startTime >= input.endTime) {
     return 'เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม';
   }
-  if (deadlineDate.getTime() >= examDate.getTime()) {
+  if (!isDateOnlyBefore(input.deadlineDate, input.examDate)) {
     return 'Deadline ต้องอยู่ก่อนวันสอบ';
   }
   return null;
