@@ -12,6 +12,7 @@ import { initWebSocketServer } from './services/wsService';
 import { auditMiddleware } from './middleware/audit';
 import { authenticateToken, AuthRequest } from './middleware/auth';
 import { ensureUploadDir } from './config/upload';
+import { getTrustProxySetting } from './config/proxy';
 
 // Import Routes
 import authRoutes from './routes/authRoutes';
@@ -28,6 +29,11 @@ import notificationRoutes from './routes/notificationRoutes';
 const app = express();
 const server = http.createServer(app);
 const PORT = Number(process.env.PORT) || 4000;
+
+// Railway terminates the public connection at one reverse proxy. Trust only
+// that hop in production so express-rate-limit can safely use X-Forwarded-For.
+// Local development remains direct (trust proxy disabled).
+app.set('trust proxy', getTrustProxySetting());
 
 /**
  * Production รับคำขอจากโดเมนที่กำหนดใน FRONTEND_URL เท่านั้น
