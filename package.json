@@ -1,0 +1,16 @@
+{
+  "name": "print-exam-system",
+  "version": "1.0.0",
+  "description": "ระบบจัดการพิมพ์ข้อสอบ (Online) แบบครบวงจร",
+  "private": true,
+  "scripts": {
+    "start": "npm run dev",
+    "dev": "npm run dev:backend",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "cd backend && npm run build && cd ../frontend && npm run build"
+  },
+  "keywords": ["print-exam", "online-examination", "fullstack", "react", "express", "sqlite", "thai-university"],
+  "author": "Antigravity Senior Full-Stack Developer",
+  "license": "MIT"
+}

@@ -1,0 +1,268 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                   Int                 @id @default(autoincrement())
+  username             String              @unique
+  passwordHash         String              @map("password_hash")
+  fullName             String              @map("full_name")
+  email                String              @unique
+  role                 UserRole
+  department           String?
+  phone                String?
+  isActive             Boolean             @default(true) @map("is_active")
+  twoFactorSecret      String?             @map("two_factor_secret")
+  twoFactorTempCode    String?             @map("two_factor_temp_code")
+  twoFactorExpiresAt   DateTime?           @map("two_factor_expires_at")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @default(now()) @updatedAt @map("updated_at")
+  auditLogs            AuditLog[]          @relation("UserAuditLogs")
+  courses              Course[]            @relation("InstructorCourses")
+  handedOverDeliveries DeliveryRecord[]    @relation("HandedOverDeliveries")
+  receivedDeliveries   DeliveryRecord[]    @relation("ReceivedDeliveries")
+  generatedLabels      EnvelopeLabel[]     @relation("GeneratedLabels")
+  coordinatedSchedules ExamSchedule[]      @relation("CoordinatorSchedules")
+  statusHistories      ExamStatusHistory[] @relation("StatusHistoryActor")
+  createdExams         Exam[]              @relation("CreatedExams")
+  notifications        Notification[]      @relation("UserNotifications")
+  packedRecords        PackingRecord[]     @relation("PackedRecords")
+  printedRecords       PrintRecord[]       @relation("PrintedRecords")
+
+  @@index([role])
+  @@index([isActive])
+  @@map("Login")
+}
+
+model Course {
+  id            Int            @id @default(autoincrement())
+  courseCode    String         @map("course_code")
+  courseName    String         @map("course_name")
+  instructorId  Int            @map("instructor_id")
+  department    String?
+  semester      Int            @default(1)
+  academicYear  String         @default("2569") @map("academic_year")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at")
+  instructor    User           @relation("InstructorCourses", fields: [instructorId], references: [id])
+  examSchedules ExamSchedule[]
+  exams         Exam[]
+
+  @@index([courseCode])
+  @@index([instructorId])
+  @@map("Subject")
+}
+
+model ExamSchedule {
+  id            Int            @id @default(autoincrement())
+  courseId      Int            @map("course_id")
+  examType      ExamType       @default(FINAL) @map("exam_type")
+  examDate      String         @map("exam_date")
+  startTime     String         @map("start_time")
+  endTime       String         @map("end_time")
+  room          String
+  coordinatorId Int?           @map("coordinator_id")
+  deadlineDate  String         @map("deadline_date")
+  status        ScheduleStatus @default(SCHEDULED)
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at")
+  coordinator   User?          @relation("CoordinatorSchedules", fields: [coordinatorId], references: [id])
+  course        Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  exams         Exam[]
+
+  @@index([examDate])
+  @@index([courseId])
+  @@index([coordinatorId])
+  @@map("Exam_Schedule")
+}
+
+model Exam {
+  id                  Int                 @id @default(autoincrement())
+  courseId            Int                 @map("course_id")
+  scheduleId          Int?                @map("schedule_id")
+  fileUrl             String?             @map("file_url")
+  originalFilename    String?             @map("original_filename")
+  fileType            String?             @map("file_type")
+  fileSize            Int?                @default(0) @map("file_size")
+  numCopies           Int                 @default(1) @map("num_copies")
+  numPages            Int                 @default(1) @map("num_pages")
+  specialInstructions String?             @map("special_instructions")
+  isDoubleSided       Boolean             @default(true) @map("is_double_sided")
+  paperSize           String              @default("A4") @map("paper_size")
+  status              ExamStatus          @default(DRAFT)
+  rejectionReason     String?             @map("rejection_reason")
+  createdById         Int                 @map("created_by")
+  submittedAt         DateTime?           @map("submitted_at")
+  deadlineAt          DateTime            @map("deadline_at")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @default(now()) @updatedAt @map("updated_at")
+  deliveryRecords     DeliveryRecord[]
+  envelopeLabels      EnvelopeLabel[]
+  statusHistory       ExamStatusHistory[]
+  course              Course              @relation(fields: [courseId], references: [id])
+  createdBy           User                @relation("CreatedExams", fields: [createdById], references: [id])
+  schedule            ExamSchedule?       @relation(fields: [scheduleId], references: [id])
+  packingRecords      PackingRecord[]
+  printRecords        PrintRecord[]
+
+  @@index([status])
+  @@index([courseId])
+  @@index([createdById])
+  @@index([deadlineAt])
+  @@index([scheduleId])
+  @@map("Exam")
+}
+
+model ExamStatusHistory {
+  id         Int      @id @default(autoincrement())
+  examId     Int      @map("exam_id")
+  fromStatus String?  @map("from_status")
+  toStatus   String   @map("to_status")
+  actionById Int      @map("action_by")
+  actionName String   @map("action_name")
+  actionAt   DateTime @default(now()) @map("action_at")
+  note       String?
+  actionBy   User     @relation("StatusHistoryActor", fields: [actionById], references: [id])
+  exam       Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@index([examId])
+  @@index([actionById])
+  @@index([actionAt])
+  @@map("Activity_Log")
+}
+
+model EnvelopeLabel {
+  id            Int      @id @default(autoincrement())
+  examId        Int      @map("exam_id")
+  labelCode     String   @unique @map("label_code")
+  generatedById Int      @map("generated_by")
+  generatedAt   DateTime @default(now()) @map("generated_at")
+  detailsJson   String?  @map("details_json")
+  exam          Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  generatedBy   User     @relation("GeneratedLabels", fields: [generatedById], references: [id])
+
+  @@index([examId])
+  @@index([generatedById])
+  @@map("Envelope_Label")
+}
+
+model PrintRecord {
+  id            Int      @id @default(autoincrement())
+  examId        Int      @map("exam_id")
+  printedById   Int      @map("printed_by")
+  printedCopies Int      @map("printed_copies")
+  paperType     String   @default("A4") @map("paper_type")
+  printedAt     DateTime @default(now()) @map("printed_at")
+  notes         String?
+  exam          Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  printedBy     User     @relation("PrintedRecords", fields: [printedById], references: [id])
+
+  @@index([examId])
+  @@index([printedById])
+  @@map("Exam_Print")
+}
+
+model PackingRecord {
+  id            Int      @id @default(autoincrement())
+  examId        Int      @map("exam_id")
+  packedById    Int      @map("packed_by")
+  packedAt      DateTime @default(now()) @map("packed_at")
+  envelopeCount Int      @default(1) @map("envelope_count")
+  notes         String?
+  exam          Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  packedBy      User     @relation("PackedRecords", fields: [packedById], references: [id])
+
+  @@index([examId])
+  @@index([packedById])
+  @@map("Envelope_Packing")
+}
+
+model DeliveryRecord {
+  id                    Int      @id @default(autoincrement())
+  examId                Int      @map("exam_id")
+  handedOverById        Int      @map("handed_over_by")
+  receivedById          Int      @map("received_by")
+  deliveredAt           DateTime @default(now()) @map("delivered_at")
+  receiverSignatureNote String?  @map("receiver_signature_note")
+  exam                  Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  handedOverBy          User     @relation("HandedOverDeliveries", fields: [handedOverById], references: [id])
+  receivedBy            User     @relation("ReceivedDeliveries", fields: [receivedById], references: [id])
+
+  @@index([examId])
+  @@index([handedOverById])
+  @@index([receivedById])
+  @@map("Exam_Delivery")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  type      String
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("Notification")
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?     @map("user_id")
+  userName   String?  @map("user_name")
+  userRole   String?  @map("user_role")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  ipAddress  String?  @map("ip_address")
+  detailJson String?  @map("detail_json")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User?    @relation("UserAuditLogs", fields: [userId], references: [id])
+
+  @@index([userId, action])
+  @@index([createdAt])
+  @@index([entityType])
+  @@map("System_Audit_Log")
+}
+
+enum UserRole {
+  INSTRUCTOR
+  AV_STAFF
+  COORDINATOR
+  ADMIN
+}
+
+enum ExamStatus {
+  DRAFT
+  SUBMITTED
+  REJECTED
+  APPROVED
+  PRINTING
+  PRINTED
+  PACKED
+  READY_FOR_PICKUP
+  DELIVERED
+}
+
+enum ExamType {
+  MIDTERM
+  FINAL
+  QUIZ
+}
+
+enum ScheduleStatus {
+  SCHEDULED
+  CONFIRMED
+  CANCELLED
+}

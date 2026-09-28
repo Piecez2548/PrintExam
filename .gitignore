@@ -1,0 +1,27 @@
+# Environment variables and credentials
+**/.env
+**/.env.*
+!**/.env.example
+
+# Dependencies and compiled output
+**/node_modules/
+**/dist/
+backend/generated/
+backend/src/generated/
+
+# Uploaded exam documents and local data
+backend/uploads/*
+backend/data/
+*.db
+*.db-journal
+
+# Local caches, logs, and editor files
+work/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Test output
+coverage/
