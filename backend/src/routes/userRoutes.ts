@@ -5,6 +5,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { recordAuditLog } from '../middleware/audit';
 import { UserRole, Prisma } from '../../generated/prisma';
+import { validateNewUsername } from '../security/usernameValidation';
 
 const router = Router();
 
@@ -83,8 +84,14 @@ router.post('/', authenticateToken, requireRole(UserRole.ADMIN), async (req: Aut
     return;
   }
 
-  if (String(username).trim().length < 3 || String(full_name).trim().length < 2) {
-    res.status(400).json({ success: false, message: 'Username หรือชื่อผู้ใช้สั้นเกินไป' });
+  const usernameValidation = validateNewUsername(username);
+  if (!usernameValidation.ok) {
+    res.status(400).json({ success: false, message: usernameValidation.message });
+    return;
+  }
+
+  if (String(full_name).trim().length < 2) {
+    res.status(400).json({ success: false, message: 'ชื่อผู้ใช้สั้นเกินไป' });
     return;
   }
 

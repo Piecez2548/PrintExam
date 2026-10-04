@@ -4,6 +4,7 @@ import { User, UserRole, ROLE_LABELS_TH } from '../../types';
 import { RoleBadge } from '../../components/common/RoleBadge';
 import { Modal } from '../../components/common/Modal';
 import { useToast } from '../../context/ToastContext';
+import { isValidUsername, USERNAME_PATTERN_SOURCE, USERNAME_RULE_MESSAGE } from '../../utils/usernameValidation';
 import {
   Users,
   UserPlus,
@@ -76,6 +77,11 @@ export const UserManagementPage: React.FC = () => {
     e.preventDefault();
     if (!username || !fullName || !email) {
       toast.warning('กรุณากรอกข้อมูลให้ครบถ้วน');
+      return;
+    }
+
+    if (!editingUserId && !isValidUsername(username)) {
+      toast.warning('Username ไม่ถูกต้อง', USERNAME_RULE_MESSAGE);
       return;
     }
 
@@ -321,9 +327,15 @@ export const UserManagementPage: React.FC = () => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
+                  minLength={3}
+                  maxLength={64}
+                  pattern={USERNAME_PATTERN_SOURCE}
                   placeholder="เช่น somchai.j"
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
                 />
+                <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                  {USERNAME_RULE_MESSAGE}
+                </p>
               </div>
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
