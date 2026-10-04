@@ -152,7 +152,7 @@ router.post('/login', loginLimiter, async (req: Request, res: Response): Promise
       expiresMinutes: TWO_FACTOR_EXPIRY_MINUTES,
     });
     const deliveryHint = delivery.channel === 'demo-log'
-      ? 'Render Logs (โหมดสาธิต)'
+      ? 'Backend Logs (โหมดสาธิต)'
       : user.email ? maskEmail(user.email) : maskPhone(user.phone);
 
     await prisma.user.update({
@@ -180,7 +180,7 @@ router.post('/login', loginLimiter, async (req: Request, res: Response): Promise
     res.json({
       success: true,
       message: delivery.channel === 'demo-log'
-        ? 'สร้างรหัส OTP สำหรับการสาธิตแล้ว กรุณาดูรหัสล่าสุดใน Render Logs และกรอกภายใน 3 นาที'
+        ? 'สร้างรหัส OTP สำหรับการสาธิตแล้ว กรุณาดูรหัสล่าสุดใน Backend Logs และกรอกภายใน 3 นาที'
         : `ส่งรหัส OTP ไปยัง ${deliveryHint} แล้ว กรุณากรอกภายใน 3 นาที`,
       requires2FA: true,
       tempToken,
