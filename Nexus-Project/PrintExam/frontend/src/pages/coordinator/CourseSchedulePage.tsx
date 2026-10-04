@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { coursesApi } from '../../api/courses';
 import { schedulesApi } from '../../api/schedules';
-import { Course, ExamSchedule } from '../../types';
-import { addCalendarDays, formatDateOnlyThai, formatDateOnlyThaiShort, toDateInputValue } from '../../utils/dateOnly';
+import { usersApi } from '../../api/users';
+import { Course, ExamSchedule, User, UserRole } from '../../types';
 import { Modal } from '../../components/common/Modal';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 import {
   CalendarCheck,
   Plus,
@@ -20,12 +21,41 @@ import {
   Layers,
 } from 'lucide-react';
 
+// Helper to format Date to strict YYYY-MM-DD
+const toDateInputValue = (val?: string | Date): string => {
+  if (!val) return '';
+  const d = typeof val === 'string' ? new Date(val) : val;
+  if (isNaN(d.getTime())) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Helper for Thai full date display
+const formatThaiDateFull = (val?: string): string => {
+  if (!val) return '';
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('th-TH', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+};
+
+const termLabel = (semester: number): string => semester === 3 ? 'ซัมเมอร์' : `ภาค ${semester}`;
+
 export const CourseSchedulePage: React.FC = () => {
   const toast = useToast();
+  const { user } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
   const [schedules, setSchedules] = useState<ExamSchedule[]>([]);
+  const [instructors, setInstructors] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<'courses' | 'schedules'>('courses');
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   // Filters
   const [filterInstructorId, setFilterInstructorId] = useState<string>('');
@@ -39,34 +69,28 @@ export const CourseSchedulePage: React.FC = () => {
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('12:00');
   const [room, setRoom] = useState('');
+  const [section, setSection] = useState('');
   const [deadlineDate, setDeadlineDate] = useState('');
-  const [deadlineManuallyEdited, setDeadlineManuallyEdited] = useState(false);
   const [editingSchedId, setEditingSchedId] = useState<number | null>(null);
 
   const fetchData = async () => {
-    setIsLoading(true);
-    const [coursesResult, schedulesResult] = await Promise.allSettled([
-      coursesApi.getCourses({ all: true }),
-      schedulesApi.getSchedules({ all: true }),
-    ]);
-
-    if (coursesResult.status === 'fulfilled') {
-      setCourses(coursesResult.value);
-    } else {
-      setCourses([]);
-      console.error('[Course Schedule] Failed to load courses', coursesResult.reason);
-      toast.error('ไม่สามารถโหลดรายวิชาได้', 'กรุณาลองใหม่อีกครั้ง');
+    try {
+      setIsLoading(true);
+      setLoadError('');
+      const [cList, sList, uList] = await Promise.all([
+        coursesApi.getCourses({ all: true }),
+        schedulesApi.getSchedules({ all: true }),
+        usersApi.getUsers({ role: UserRole.INSTRUCTOR }),
+      ]);
+      setCourses(cList);
+      setSchedules(sList);
+      setInstructors(uList);
+    } catch (err) {
+      console.error(err);
+      setLoadError('ไม่สามารถโหลดรายวิชาและตารางสอบได้');
+    } finally {
+      setIsLoading(false);
     }
-
-    if (schedulesResult.status === 'fulfilled') {
-      setSchedules(schedulesResult.value);
-    } else {
-      setSchedules([]);
-      console.error('[Course Schedule] Failed to load schedules', schedulesResult.reason);
-      toast.error('ไม่สามารถโหลดกำหนดการสอบได้', 'กรุณาลองใหม่อีกครั้ง');
-    }
-
-    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -97,38 +121,19 @@ export const CourseSchedulePage: React.FC = () => {
   });
 
   // Courses that DO NOT have an exam schedule yet
-  const scheduledCourseIds = new Set(schedules.map((s) => s.course_id));
+  const scheduledCourseIds = new Set(schedules.map((schedule) => schedule.course_id));
   const coursesWithoutSchedule = courses.filter((c) => !scheduledCourseIds.has(c.id));
-
-  // Instructor metadata is already included in each course response. Derive
-  // the filter options locally so an Admin-only user listing failure cannot
-  // prevent courses and schedules from loading.
-  const instructors = Array.from(
-    new Map(
-      courses.map((course) => [course.instructor_id, {
-        id: course.instructor_id,
-        full_name: course.instructor_name || `Instructor #${course.instructor_id}`,
-        department: course.instructor_department,
-      }]),
-    ).values(),
-  ).sort((a, b) => a.full_name.localeCompare(b.full_name));
 
   const handleExamDateChange = (val: string) => {
     setSchedDate(val);
-    if (!val) {
-      if (!deadlineManuallyEdited) setDeadlineDate('');
-      return;
+    if (val) {
+      const examD = new Date(val);
+      if (!isNaN(examD.getTime())) {
+        const deadline = new Date(examD);
+        deadline.setDate(deadline.getDate() - 5);
+        setDeadlineDate(toDateInputValue(deadline));
+      }
     }
-    if (!deadlineManuallyEdited) {
-      setDeadlineDate(addCalendarDays(val, -5));
-    } else if (deadlineDate && deadlineDate >= val) {
-      toast.warning('กำหนดส่งไม่ถูกต้อง', 'Deadline ที่เลือกต้องอยู่ก่อนวันสอบใหม่');
-    }
-  };
-
-  const handleDeadlineDateChange = (val: string) => {
-    setDeadlineManuallyEdited(true);
-    setDeadlineDate(val);
   };
 
   // Save Schedule
@@ -138,8 +143,17 @@ export const CourseSchedulePage: React.FC = () => {
       toast.warning('กรุณากรอกข้อมูลกำหนดการสอบให้ครบถ้วน');
       return;
     }
+    if (startTime >= endTime) {
+      toast.warning('เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่มสอบ');
+      return;
+    }
     if (deadlineDate >= schedDate) {
-      toast.warning('กำหนดส่งไม่ถูกต้อง', 'Deadline ต้องอยู่ก่อนวันสอบ');
+      toast.warning('Deadline ต้องอยู่ก่อนวันสอบ');
+      return;
+    }
+    const alreadyScheduled = !editingSchedId && schedules.some((schedule) => schedule.course_id === Number(schedCourseId));
+    if (alreadyScheduled) {
+      toast.warning('รายวิชานี้กำหนดรอบสอบแล้ว กรุณาใช้ปุ่มแก้ไขตาราง');
       return;
     }
 
@@ -152,6 +166,7 @@ export const CourseSchedulePage: React.FC = () => {
           start_time: startTime,
           end_time: endTime,
           room,
+          section,
           deadline_date: deadlineDate,
         });
         toast.success('แก้ไขกำหนดการสอบสำเร็จ');
@@ -163,6 +178,7 @@ export const CourseSchedulePage: React.FC = () => {
           start_time: startTime,
           end_time: endTime,
           room,
+          section,
           deadline_date: deadlineDate,
         });
         toast.success('กำหนดวันสอบและห้องสอบเรียบร้อยแล้ว');
@@ -176,26 +192,41 @@ export const CourseSchedulePage: React.FC = () => {
   };
 
   const resetSchedForm = () => {
-    setSchedCourseId(courses.length > 0 ? courses[0].id.toString() : '');
+    const firstUnscheduledCourse = coursesWithoutSchedule[0];
+    setSchedCourseId(firstUnscheduledCourse?.id.toString() || '');
     setSchedType('FINAL');
-    const defaultExamStr = addCalendarDays(toDateInputValue(new Date()), 14);
+    const defaultExam = new Date();
+    defaultExam.setDate(defaultExam.getDate() + 14);
+    const defaultExamStr = toDateInputValue(defaultExam);
     setSchedDate(defaultExamStr);
-    setDeadlineManuallyEdited(false);
-    setDeadlineDate(addCalendarDays(defaultExamStr, -5));
+
+    const defaultDead = new Date(defaultExam);
+    defaultDead.setDate(defaultDead.getDate() - 5);
+    setDeadlineDate(toDateInputValue(defaultDead));
 
     setStartTime('09:00');
     setEndTime('12:00');
     setRoom('');
+    setSection(firstUnscheduledCourse?.section || '');
     setEditingSchedId(null);
   };
 
   const handleOpenAddScheduleForCourse = (courseId: number) => {
+    if (scheduledCourseIds.has(courseId)) {
+      toast.warning('รายวิชานี้กำหนดรอบสอบแล้ว กรุณาแก้ไขตารางเดิม');
+      return;
+    }
     resetSchedForm();
     setSchedCourseId(courseId.toString());
+    setSection(courses.find((course) => course.id === courseId)?.section || '');
     setIsSchedModalOpen(true);
   };
 
   const handleOpenAddSchedule = () => {
+    if (coursesWithoutSchedule.length === 0) {
+      toast.info('ไม่มีรายวิชาใหม่ที่รอกำหนดรอบสอบ');
+      return;
+    }
     resetSchedForm();
     setIsSchedModalOpen(true);
   };
@@ -208,19 +239,9 @@ export const CourseSchedulePage: React.FC = () => {
     setStartTime(sched.start_time || '09:00');
     setEndTime(sched.end_time || '12:00');
     setRoom(sched.room || '');
+    setSection(sched.section || '');
     setDeadlineDate(toDateInputValue(sched.deadline_date));
-    setDeadlineManuallyEdited(true);
     setIsSchedModalOpen(true);
-  };
-
-  const handleConfirmSchedule = async (schedId: number) => {
-    try {
-      await schedulesApi.confirmSchedule(schedId);
-      toast.success('ยืนยันกำหนดการสอบเรียบร้อยแล้ว');
-      fetchData();
-    } catch (err: any) {
-      toast.error('ไม่สามารถยืนยันได้', err.response?.data?.message);
-    }
   };
 
   return (
@@ -240,13 +261,21 @@ export const CourseSchedulePage: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={handleOpenAddSchedule}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/25 transition-all"
+            disabled={coursesWithoutSchedule.length === 0}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/25 transition-all"
           >
             <Plus className="w-4 h-4" />
-            + กำหนดวันสอบ/ห้องสอบ
+            กำหนดรอบสอบวิชาใหม่
           </button>
         </div>
       </div>
+
+      {loadError && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2"><AlertTriangle className="h-5 w-5" /> {loadError}</div>
+          <button onClick={fetchData} className="rounded-xl bg-rose-600 px-4 py-2 font-bold text-white">ลองใหม่</button>
+        </div>
+      )}
 
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -267,9 +296,9 @@ export const CourseSchedulePage: React.FC = () => {
             <CheckCircle2 className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xs text-slate-400 font-medium">กำหนดวันสอบแล้ว</div>
+            <div className="text-xs text-slate-400 font-medium">กำหนดรอบสอบแล้ว</div>
             <div className="text-xl font-extrabold text-emerald-600 mt-0.5">
-              {schedules.length} วิชา
+              {scheduledCourseIds.size} วิชา
             </div>
           </div>
         </div>
@@ -352,11 +381,10 @@ export const CourseSchedulePage: React.FC = () => {
       <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         <button
           onClick={() => setActiveTab('courses')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-            activeTab === 'courses'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800'
-          }`}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'courses'
+            ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
+            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800'
+            }`}
         >
           <BookOpen className="w-4 h-4" />
           <span>รายชื่อวิชาที่จะจัดสอบ ({filteredCourses.length} วิชา)</span>
@@ -364,11 +392,10 @@ export const CourseSchedulePage: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('schedules')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-            activeTab === 'schedules'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800'
-          }`}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'schedules'
+            ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
+            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800'
+            }`}
         >
           <Calendar className="w-4 h-4" />
           <span>ตารางกำหนดการสอบและห้องสอบ ({filteredSchedules.length} รายการ)</span>
@@ -396,7 +423,7 @@ export const CourseSchedulePage: React.FC = () => {
                   return (
                     <tr key={course.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                       <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-slate-100 text-sm">
-                        {course.course_code}
+                        {course.course_code}{course.section ? <div className="text-[11px] font-medium text-slate-500">ตอน {course.section}</div> : null}
                       </td>
                       <td className="py-3.5 px-4 font-medium text-slate-800 dark:text-slate-200">
                         {course.course_name}
@@ -406,12 +433,13 @@ export const CourseSchedulePage: React.FC = () => {
                         <div className="text-[11px] text-slate-400">{course.instructor_email}</div>
                       </td>
                       <td className="py-3.5 px-4 text-slate-600">
-                        ภาค {course.semester} / {course.academic_year}
+                        {termLabel(course.semester)} / {course.academic_year}
+                        <div className="text-[11px] text-slate-400 mt-0.5">{course.student_count || 1} คน</div>
                       </td>
                       <td className="py-3.5 px-4">
                         {hasSchedule ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <CheckCircle2 className="w-3 h-3" /> กำหนดวันสอบแล้ว
+                            <CheckCircle2 className="w-3 h-3" /> กำหนดรอบสอบแล้ว
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
@@ -419,25 +447,27 @@ export const CourseSchedulePage: React.FC = () => {
                           </span>
                         )}
                       </td>
-                      <td className="py-3.5 px-4 text-right">
-                        {!hasSchedule ? (
-                          <button
-                            onClick={() => handleOpenAddScheduleForCourse(course.id)}
-                            className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition-colors shadow-xs"
-                          >
-                            + กำหนดวันสอบ
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              const sched = schedules.find((s) => s.course_id === course.id);
-                              if (sched) handleOpenEditSchedule(sched);
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium"
-                          >
-                            ดู / แก้ไขวันสอบ
-                          </button>
-                        )}
+                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1.5">
+                          {hasSchedule ? (
+                            <button
+                              onClick={() => {
+                                const sched = schedules.find((s) => s.course_id === course.id);
+                                if (sched) handleOpenEditSchedule(sched);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium"
+                            >
+                              แก้ไขตาราง
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenAddScheduleForCourse(course.id)}
+                              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition-colors shadow-xs"
+                            >
+                              <Plus className="mr-1 inline h-3.5 w-3.5" /> กำหนดรอบสอบ
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -452,12 +482,12 @@ export const CourseSchedulePage: React.FC = () => {
       {activeTab === 'schedules' && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full min-w-[1120px] table-auto text-left text-xs">
               <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-3.5 px-4">รหัสวิชา & รายวิชา</th>
                   <th className="py-3.5 px-4">อาจารย์ผู้สอน</th>
-                  <th className="py-3.5 px-4">ประเภทการสอบ</th>
+                  <th className="min-w-[112px] whitespace-nowrap py-3.5 px-4">ประเภทการสอบ</th>
                   <th className="py-3.5 px-4">วันสอบ & เวลา</th>
                   <th className="py-3.5 px-4">ห้องสอบ (Room)</th>
                   <th className="py-3.5 px-4">Deadline ส่งข้อสอบ</th>
@@ -495,45 +525,38 @@ export const CourseSchedulePage: React.FC = () => {
                           {courses.find((c) => c.id === sched.course_id)?.instructor_email || ''}
                         </div>
                       </td>
-                      <td className="py-3.5 px-4">
-                        <span className="font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">
+                      <td className="min-w-[112px] whitespace-nowrap py-3.5 px-4">
+                        <span className="inline-flex whitespace-nowrap rounded-lg bg-slate-100 px-2.5 py-1 font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                           {sched.exam_type === 'MIDTERM' ? 'กลางภาค' : 'ปลายภาค'}
                         </span>
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="font-medium text-slate-800 dark:text-slate-200">
-                          {formatDateOnlyThaiShort(sched.exam_date)}
+                          {new Date(sched.exam_date).toLocaleDateString('th-TH')}
                         </div>
                         <div className="text-[11px] text-slate-500">
                           {sched.start_time} - {sched.end_time} น.
                         </div>
                       </td>
                       <td className="py-3.5 px-4 font-bold text-rose-600">
-                        {sched.room}
+                        <div>{sched.room}</div>
+                        {sched.section && <div className="text-[11px] text-slate-500 font-medium mt-0.5">ตอน {sched.section}</div>}
                       </td>
                       <td className="py-3.5 px-4 text-slate-600">
-                        {formatDateOnlyThaiShort(sched.deadline_date)}
+                        {new Date(sched.deadline_date).toLocaleDateString('th-TH')}
                       </td>
                       <td className="py-3.5 px-4">
-                        {sched.status === 'CONFIRMED' ? (
+                        {sched.status !== 'CANCELLED' ? (
                           <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-bold">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> ยืนยันแล้ว
+                            <CheckCircle2 className="w-3.5 h-3.5" /> พร้อมให้อาจารย์ส่งข้อสอบ
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded font-medium">
-                            <Clock className="w-3.5 h-3.5" /> รอการยืนยัน
+                          <span className="inline-flex items-center gap-1 text-rose-700 bg-rose-50 px-2 py-0.5 rounded font-medium">
+                            ยกเลิกแล้ว
                           </span>
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-right space-x-1.5">
-                        {sched.status !== 'CONFIRMED' && (
-                          <button
-                            onClick={() => handleConfirmSchedule(sched.id)}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors"
-                          >
-                            ยืนยัน
-                          </button>
-                        )}
                         <button
                           onClick={() => handleOpenEditSchedule(sched)}
                           className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium"
@@ -564,19 +587,26 @@ export const CourseSchedulePage: React.FC = () => {
             </label>
             <select
               value={schedCourseId}
-              onChange={(e) => setSchedCourseId(e.target.value)}
+              onChange={(e) => {
+                setSchedCourseId(e.target.value);
+                setSection(courses.find((course) => course.id === Number(e.target.value))?.section || '');
+              }}
               required
+              disabled={Boolean(editingSchedId)}
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold"
             >
-              {courses.map((c) => (
+              {(editingSchedId
+                ? courses.filter((course) => course.id === Number(schedCourseId))
+                : coursesWithoutSchedule
+              ).map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.course_code} - {c.course_name} (อาจารย์: {c.instructor_name})
+                  {c.course_code}{c.section ? ` ตอน ${c.section}` : ''} - {c.course_name} ({termLabel(c.semester)}/{c.academic_year}, อาจารย์: {c.instructor_name})
                 </option>
               ))}
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 ประเภทการสอบ *
@@ -587,7 +617,7 @@ export const CourseSchedulePage: React.FC = () => {
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold"
               >
                 <option value="MIDTERM">สอบกลางภาค (Midterm Exam)</option>
-                <option value="FINAL">สอบไล่ปลายภาค (Final Exam)</option>
+                <option value="FINAL">สอบปลายภาค (Final Exam)</option>
               </select>
             </div>
 
@@ -606,13 +636,13 @@ export const CourseSchedulePage: React.FC = () => {
               />
               {schedDate && (
                 <div className="text-[11px] text-blue-600 dark:text-blue-400 mt-1 font-medium">
-                  {formatDateOnlyThai(schedDate)}
+                  {formatThaiDateFull(schedDate)}
                 </div>
               )}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 เวลาเริ่มสอบ
@@ -640,36 +670,34 @@ export const CourseSchedulePage: React.FC = () => {
             </div>
           </div>
 
-          <div>
-            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              ห้องสอบ (Exam Room) *
-            </label>
-            <input
-              type="text"
-              placeholder="เช่น ห้องบรรยาย CB-2301, CB-2302"
-              value={room}
-              onChange={(e) => setRoom(e.target.value)}
-              required
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">ห้องสอบ (Exam Room) *</label>
+              <input type="text" placeholder="เช่น ห้องบรรยาย CB-2301" value={room} onChange={(e) => setRoom(e.target.value)} required className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs" />
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">ตอน (Section)</label>
+              <input type="text" placeholder="เช่น 01" value={section} onChange={(e) => setSection(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs" />
+            </div>
           </div>
 
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
               วันสุดท้ายที่อาจารย์ต้องส่งไฟล์ (Deadline Date) *
             </label>
-              <input
-                type="date"
-                value={deadlineDate}
-                onChange={(e) => handleDeadlineDateChange(e.target.value)}
-                required
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold"
-              />
-              {deadlineDate && (
-                <div className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 font-medium">
-                Deadline: {formatDateOnlyThai(deadlineDate)} (ระบบกำหนดค่าเริ่มต้นก่อนวันสอบ 5 วัน สามารถปรับเปลี่ยนได้ตามความเหมาะสม)
-                </div>
-              )}
+            <input
+              type="date"
+              value={deadlineDate}
+              onChange={(e) => setDeadlineDate(e.target.value)}
+              max={schedDate || undefined}
+              required
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold"
+            />
+            {deadlineDate && (
+              <div className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 font-medium">
+                Deadline: {formatThaiDateFull(deadlineDate)} (อาจารย์สามารถแก้ไขข้อสอบได้ก่อนกำหนดนี้อย่างน้อย 2 วัน)
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">

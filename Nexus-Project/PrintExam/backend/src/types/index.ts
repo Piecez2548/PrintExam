@@ -9,7 +9,9 @@ export interface User {
   role: UserRole;
   department?: string;
   phone?: string;
+  office_room?: string;
   is_active: number; // 1 or 0
+  must_change_password: boolean;
   two_factor_secret?: string;
   two_factor_temp_code?: string;
   two_factor_expires_at?: string;
@@ -25,7 +27,9 @@ export interface UserDTO {
   role: UserRole;
   department?: string;
   phone?: string;
+  office_room?: string;
   is_active: boolean;
+  must_change_password: boolean;
   created_at: string;
 }
 
@@ -37,7 +41,9 @@ export interface Course {
   instructor_name?: string;
   instructor_email?: string;
   department?: string;
+  section?: string;
   semester: number;
+  student_count?: number;
   academic_year: string;
   created_at: string;
   updated_at: string;
@@ -55,8 +61,10 @@ export interface ExamSchedule {
   start_time: string;
   end_time: string;
   room: string;
+  section?: string;
   coordinator_id?: number;
   coordinator_name?: string;
+  coordinator_phone?: string;
   deadline_date: string;
   status: 'SCHEDULED' | 'CONFIRMED' | 'CANCELLED';
   created_at: string;
@@ -81,7 +89,15 @@ export interface Exam {
   file_type?: string;
   file_size?: number;
   num_copies: number;
+  student_count?: number;
+  reserve_copies?: number;
+  section?: string;
   num_pages: number;
+  exam_language?: string;
+  print_format?: string;
+  allowed_materials?: string;
+  requires_answer_sheet?: boolean;
+  exam_session_type?: string;
   special_instructions?: string;
   is_double_sided: number; // 1 or 0
   paper_size: string;

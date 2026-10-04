@@ -17,11 +17,6 @@ export const schedulesApi = {
     return res.data;
   },
 
-  confirmSchedule: async (id: number | string): Promise<{ success: boolean; message: string }> => {
-    const res = await apiClient.patch(`/exam-schedules/${id}/confirm`);
-    return res.data;
-  },
-
   deleteSchedule: async (id: number | string): Promise<{ success: boolean; message: string }> => {
     const res = await apiClient.delete(`/exam-schedules/${id}`);
     return res.data;

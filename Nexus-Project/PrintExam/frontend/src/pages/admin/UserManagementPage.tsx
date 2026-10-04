@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { usersApi } from '../../api/users';
+import { PasswordResetRequestItem, usersApi } from '../../api/users';
 import { User, UserRole, ROLE_LABELS_TH } from '../../types';
 import { RoleBadge } from '../../components/common/RoleBadge';
 import { Modal } from '../../components/common/Modal';
@@ -14,6 +14,11 @@ import {
   Trash2,
   CheckCircle2,
   XCircle,
+  KeyRound,
+  Copy,
+  RefreshCw,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 export const UserManagementPage: React.FC = () => {
@@ -23,6 +28,7 @@ export const UserManagementPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [passwordResetRequests, setPasswordResetRequests] = useState<PasswordResetRequestItem[]>([]);
 
   // Add/Edit User Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -41,15 +47,27 @@ export const UserManagementPage: React.FC = () => {
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Admin temporary-password reset
+  const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null);
+  const [temporaryPassword, setTemporaryPassword] = useState('');
+  const [confirmTemporaryPassword, setConfirmTemporaryPassword] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [showTemporaryPassword, setShowTemporaryPassword] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+
   const fetchUsers = async () => {
     try {
       setIsLoading(true);
-      const data = await usersApi.getUsers({
-        search: searchQuery || undefined,
-        role: roleFilter || undefined,
-        status: statusFilter || undefined,
-      });
+      const [data, resetRequests] = await Promise.all([
+        usersApi.getUsers({
+          search: searchQuery || undefined,
+          role: roleFilter || undefined,
+          status: statusFilter || undefined,
+        }),
+        usersApi.getPasswordResetRequests(),
+      ]);
       setUsers(data);
+      setPasswordResetRequests(resetRequests);
     } catch (err) {
       console.error(err);
     } finally {
@@ -132,9 +150,54 @@ export const UserManagementPage: React.FC = () => {
       setUserToDelete(null);
       fetchUsers();
     } catch (err: any) {
-      toast.error('ไม่สามารถลบได้', err.response?.data?.message);
+      toast.error('ไม่สามารถปิดใช้งานบัญชีได้', err.response?.data?.message);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const generateTemporaryPassword = () => {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+    const values = new Uint32Array(12);
+    window.crypto.getRandomValues(values);
+    const generated = `Tmp!7${Array.from(values, (value) => alphabet[value % alphabet.length]).join('')}`;
+    setTemporaryPassword(generated);
+    setConfirmTemporaryPassword(generated);
+    setShowTemporaryPassword(true);
+  };
+
+  const openResetPasswordModal = (target: User) => {
+    setResetPasswordUser(target);
+    setTemporaryPassword('');
+    setConfirmTemporaryPassword('');
+    setAdminPassword('');
+    setShowTemporaryPassword(false);
+  };
+
+  const handleResetPassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!resetPasswordUser) return;
+    if (temporaryPassword.length < 12) {
+      toast.warning('รหัสผ่านต้องยาวอย่างน้อย 12 ตัว และมีตัวพิมพ์ใหญ่ พิมพ์เล็ก ตัวเลข และอักขระพิเศษ');
+      return;
+    }
+    if (temporaryPassword !== confirmTemporaryPassword) {
+      toast.warning('รหัสผ่านชั่วคราวและการยืนยันไม่ตรงกัน');
+      return;
+    }
+    try {
+      setIsResettingPassword(true);
+      const result = await usersApi.resetPassword(resetPasswordUser.id, temporaryPassword, adminPassword);
+      toast.success('ตั้งรหัสผ่านชั่วคราวแล้ว', result.message);
+      setResetPasswordUser(null);
+      setTemporaryPassword('');
+      setConfirmTemporaryPassword('');
+      setAdminPassword('');
+      fetchUsers();
+    } catch (error: any) {
+      toast.error('ตั้งรหัสผ่านไม่สำเร็จ', error.response?.data?.message || 'กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
@@ -148,7 +211,7 @@ export const UserManagementPage: React.FC = () => {
             <span>จัดการผู้ใช้งานและกำหนดสิทธิ์</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            เพิ่ม, แก้ไข, ระงับการใช้งาน, ลบ และกำหนดบทบาทผู้ใช้งานในระบบ (Admin Role)
+            เพิ่ม แก้ไข ปิดใช้งาน และกำหนดบทบาทผู้ใช้งาน โดยเก็บประวัติการทำงานไว้
           </p>
         </div>
 
@@ -163,6 +226,33 @@ export const UserManagementPage: React.FC = () => {
           เพิ่มผู้ใช้งานใหม่
         </button>
       </div>
+
+      {passwordResetRequests.length > 0 && (
+        <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
+          <div className="flex items-center gap-2 font-bold text-amber-900 dark:text-amber-200">
+            <KeyRound className="h-5 w-5" /> คำขอลืมรหัสผ่านที่รอดำเนินการ ({passwordResetRequests.length})
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {passwordResetRequests.map((request) => {
+              const target = users.find((item) => item.id === request.user_id);
+              return (
+                <div key={request.id} className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white p-3 text-xs dark:border-amber-900 dark:bg-slate-900">
+                  <div>
+                    <div className="font-bold text-slate-900 dark:text-white">{request.full_name} ({request.username})</div>
+                    <div className="mt-1 text-slate-500">ขอเมื่อ {new Date(request.requested_at).toLocaleString('th-TH')}</div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!target}
+                    onClick={() => target && openResetPasswordModal(target)}
+                    className="shrink-0 rounded-lg bg-amber-600 px-3 py-2 font-bold text-white hover:bg-amber-700 disabled:opacity-50"
+                  >ตั้งรหัสชั่วคราว</button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Filter Toolbar */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row gap-3 items-center justify-between">
@@ -276,6 +366,12 @@ export const UserManagementPage: React.FC = () => {
                         แก้ไข
                       </button>
                       <button
+                        onClick={() => openResetPasswordModal(u)}
+                        className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1 font-medium text-blue-700 hover:bg-blue-100"
+                      >
+                        <KeyRound className="h-3.5 w-3.5" /> รีเซ็ตรหัส
+                      </button>
+                      <button
                         onClick={() => handleToggleSuspend(u)}
                         className={`px-2.5 py-1 rounded-lg font-medium ${
                           u.is_active
@@ -292,7 +388,7 @@ export const UserManagementPage: React.FC = () => {
                         }}
                         className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 font-medium"
                       >
-                        ลบ
+                        ปิดบัญชี
                       </button>
                     </td>
                   </tr>
@@ -334,6 +430,9 @@ export const UserManagementPage: React.FC = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  minLength={12}
+                  autoComplete="new-password"
+                  placeholder="12+ ตัว: A-Z, a-z, 0-9 และอักขระพิเศษ"
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
                 />
               </div>
@@ -431,24 +530,88 @@ export const UserManagementPage: React.FC = () => {
         </form>
       </Modal>
 
+      {/* Admin password reset modal */}
+      <Modal
+        isOpen={Boolean(resetPasswordUser)}
+        onClose={() => setResetPasswordUser(null)}
+        title="ตั้งรหัสผ่านชั่วคราว"
+        maxWidth="md"
+      >
+        {resetPasswordUser && (
+          <form onSubmit={handleResetPassword} className="space-y-4 text-sm">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              <div className="font-bold">{resetPasswordUser.full_name}</div>
+              <div className="mt-1 text-xs">Username: {resetPasswordUser.username}</div>
+              <p className="mt-2 text-xs">โปรดตรวจสอบตัวตนของผู้ใช้ก่อนตั้งรหัสใหม่ และส่งรหัสผ่านชั่วคราวผ่านช่องทางที่ปลอดภัย ผู้ใช้จะถูกบังคับให้เปลี่ยนรหัสหลังเข้าสู่ระบบ</p>
+            </div>
+
+            <div>
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <label className="font-semibold text-slate-700 dark:text-slate-200">รหัสผ่านชั่วคราว</label>
+                <button type="button" onClick={generateTemporaryPassword} className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:underline">
+                  <RefreshCw className="h-3.5 w-3.5" /> สร้างรหัสให้อัตโนมัติ
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type={showTemporaryPassword ? 'text' : 'password'}
+                  value={temporaryPassword}
+                  onChange={(event) => setTemporaryPassword(event.target.value)}
+                  minLength={12}
+                  required
+                  autoComplete="new-password"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 pr-20 font-mono text-sm dark:border-slate-700 dark:bg-slate-900"
+                  placeholder="12+ ตัว: A-Z, a-z, 0-9 และอักขระพิเศษ"
+                />
+                <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
+                  <button type="button" onClick={() => setShowTemporaryPassword((value) => !value)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label={showTemporaryPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}>
+                    {showTemporaryPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                  <button type="button" disabled={!temporaryPassword} onClick={() => void navigator.clipboard.writeText(temporaryPassword).then(() => toast.success('คัดลอกรหัสผ่านแล้ว'))} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800" aria-label="คัดลอกรหัสผ่าน">
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <label className="block font-semibold text-slate-700 dark:text-slate-200">
+              ยืนยันรหัสผ่านชั่วคราว
+              <input type="password" value={confirmTemporaryPassword} onChange={(event) => setConfirmTemporaryPassword(event.target.value)} minLength={12} required autoComplete="new-password" className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900" />
+            </label>
+
+            <label className="block font-semibold text-slate-700 dark:text-slate-200">
+              รหัสผ่านของผู้ดูแลระบบเพื่อยืนยันการดำเนินการ
+              <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} required autoComplete="current-password" className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900" />
+            </label>
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+              <button type="button" onClick={() => setResetPasswordUser(null)} className="rounded-xl bg-slate-100 px-4 py-2 font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">ยกเลิก</button>
+              <button disabled={isResettingPassword} className="rounded-xl bg-blue-600 px-5 py-2 font-bold text-white hover:bg-blue-700 disabled:opacity-50">
+                {isResettingPassword ? 'กำลังตั้งรหัส...' : 'ยืนยันตั้งรหัสผ่านชั่วคราว'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
       {/* Delete User Confirmation Modal */}
       <Modal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
-        title="ยืนยันการลบผู้ใช้งาน"
+        title="ยืนยันการปิดใช้งานบัญชี"
         maxWidth="md"
       >
         {userToDelete && (
           <div className="space-y-4 text-xs">
             <div className="bg-rose-50 dark:bg-rose-950/40 p-4 rounded-2xl border border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200">
               <div className="font-bold text-sm">
-                คุณต้องการลบผู้ใช้งาน "{userToDelete.full_name}" ({userToDelete.username}) หรือไม่?
+                คุณต้องการปิดใช้งานบัญชี "{userToDelete.full_name}" ({userToDelete.username}) หรือไม่?
               </div>
               <div className="mt-1 text-xs text-rose-800 dark:text-rose-300">
                 อีเมล: {userToDelete.email} | บทบาท: {userToDelete.role} | สังกัด: {userToDelete.department || '-'}
               </div>
               <p className="mt-2 text-[11px] text-rose-700 dark:text-rose-400">
-                ⚠️ การดำเนินการนี้จะลบบัญชีผู้ใช้งานและข้อมูลที่เกี่ยวข้องทั้งหมดออกจากระบบอย่างถาวร
+                การดำเนินการนี้จะปิดใช้งานบัญชีและยกเลิก session ปัจจุบัน โดยยังเก็บรายวิชา ข้อสอบ และ Audit Log ไว้เป็นหลักฐาน
               </p>
             </div>
 
@@ -467,7 +630,7 @@ export const UserManagementPage: React.FC = () => {
                 className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition-colors shadow-sm disabled:opacity-50"
               >
                 <Trash2 className="w-4 h-4" />
-                {isDeleting ? 'กำลังลบ...' : 'ยืนยันลบผู้ใช้งาน'}
+                {isDeleting ? 'กำลังปิดบัญชี...' : 'ยืนยันปิดใช้งาน'}
               </button>
             </div>
           </div>

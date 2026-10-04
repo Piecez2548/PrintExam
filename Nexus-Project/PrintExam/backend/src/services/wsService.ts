@@ -2,6 +2,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { Server } from 'http';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config/constants';
+import { prisma } from '../database/prisma';
+import { AUTH_COOKIE_NAME, readCookie } from './authTokenService';
 
 interface ExtendedWebSocket extends WebSocket {
   userId?: number;
@@ -12,20 +14,44 @@ interface ExtendedWebSocket extends WebSocket {
 let wss: WebSocketServer | null = null;
 
 export function initWebSocketServer(server: Server): WebSocketServer {
-  wss = new WebSocketServer({ server, path: '/ws' });
+  wss = new WebSocketServer({
+    server,
+    path: '/ws',
+  });
 
-  wss.on('connection', (ws: ExtendedWebSocket, req) => {
-    // H-1: ตรวจสอบ JWT จาก query string ก่อนอนุญาตให้เชื่อมต่อ
+  wss.on('connection', async (ws: ExtendedWebSocket, req) => {
     try {
-      const url = new URL(req.url!, `http://${req.headers.host}`);
-      const token = url.searchParams.get('token');
+      const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const origin = req.headers.origin;
+      if (origin && !allowedOrigins.includes(origin)) throw new Error('WebSocket origin is not allowed');
+      if (!origin && process.env.NODE_ENV === 'production') throw new Error('WebSocket origin is required');
+
+      const token = readCookie(req.headers.cookie, AUTH_COOKIE_NAME);
       if (!token) {
         ws.close(4001, 'Missing authentication token');
         return;
       }
-      const decoded = jwt.verify(token, JWT_SECRET) as { id: number; role: string };
-      ws.userId = decoded.id;
-      ws.userRole = decoded.role;
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as {
+        id: number;
+        role: string;
+        pending2FA?: boolean;
+        sessionVersion?: number;
+      };
+      if (decoded.pending2FA) throw new Error('2FA is not complete');
+
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+        select: { id: true, role: true, isActive: true, sessionVersion: true, mustChangePassword: true },
+      });
+      if (!user?.isActive) throw new Error('Account is inactive');
+      if (decoded.sessionVersion !== user.sessionVersion) throw new Error('Session has been revoked');
+      if (user.mustChangePassword) throw new Error('Password change is required');
+
+      ws.userId = user.id;
+      ws.userRole = user.role;
       ws.isAlive = true;
       console.log(`[WebSocket] Client authenticated: User ${ws.userId} (${ws.userRole})`);
     } catch (err) {

@@ -5,13 +5,13 @@ import { useToast } from './ToastContext';
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<LoginResponse>;
   verify2FA: (tempToken: string, otpCode: string) => Promise<Verify2FAResponse>;
   quickSwitchRole: (role: UserRole) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  updateCurrentUser: (user: User) => void;
   // Role helpers
   isInstructor: boolean;
   isAvStaff: boolean;
@@ -22,34 +22,26 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('print_exam_user');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('print_exam_token'));
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const toast = useToast();
 
   useEffect(() => {
+    let cancelled = false;
     const initAuth = async () => {
-      const savedToken = localStorage.getItem('print_exam_token');
-      if (savedToken) {
-        try {
-          const res = await authApi.getMe();
-          setUser(res.user);
-          localStorage.setItem('print_exam_user', JSON.stringify(res.user));
-        } catch (err) {
-          console.error('Session validation error:', err);
-          setUser(null);
-          setToken(null);
-          localStorage.removeItem('print_exam_token');
-          localStorage.removeItem('print_exam_user');
-        }
+      try {
+        const res = await authApi.getMe();
+        if (!cancelled) setUser(res.user);
+      } catch {
+        if (!cancelled) setUser(null);
       }
-      setIsLoading(false);
+      if (!cancelled) setIsLoading(false);
     };
 
-    initAuth();
+    void initAuth();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = async (username: string, password: string): Promise<LoginResponse> => {
@@ -58,10 +50,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const verify2FA = async (tempToken: string, otpCode: string): Promise<Verify2FAResponse> => {
     const res = await authApi.verify2FA(tempToken, otpCode);
-    setToken(res.token);
     setUser(res.user);
-    localStorage.setItem('print_exam_token', res.token);
-    localStorage.setItem('print_exam_user', JSON.stringify(res.user));
     toast.success('เข้าสู่ระบบสำเร็จ', `ยินดีต้อนรับ ${res.user.full_name}`);
     return res;
   };
@@ -69,22 +58,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const quickSwitchRole = async (role: UserRole): Promise<void> => {
     try {
       const res = await authApi.quickLogin(role);
-      setToken(res.token);
       setUser(res.user);
-      localStorage.setItem('print_exam_token', res.token);
-      localStorage.setItem('print_exam_user', JSON.stringify(res.user));
       toast.success('สลับบทบาทสำเร็จ', `เปลี่ยนเป็น ${res.user.full_name} (${role})`);
     } catch (err: any) {
       toast.error('สลับบทบาทล้มเหลว', err.response?.data?.message || 'เกิดข้อผิดพลาด');
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // Local sign-out still succeeds if the server session already expired.
+    }
     setUser(null);
-    setToken(null);
-    localStorage.removeItem('print_exam_token');
-    localStorage.removeItem('print_exam_user');
     toast.info('ออกจากระบบเรียบร้อย');
+  };
+
+  const updateCurrentUser = (nextUser: User) => {
+    setUser(nextUser);
   };
 
   const isInstructor = user?.role === UserRole.INSTRUCTOR;
@@ -96,13 +88,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     <AuthContext.Provider
       value={{
         user,
-        token,
-        isAuthenticated: !!user && !!token,
+        isAuthenticated: !!user,
         isLoading,
         login,
         verify2FA,
         quickSwitchRole,
         logout,
+        updateCurrentUser,
         isInstructor,
         isAvStaff,
         isCoordinator,

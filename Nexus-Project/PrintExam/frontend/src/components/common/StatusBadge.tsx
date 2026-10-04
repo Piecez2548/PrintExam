@@ -96,6 +96,12 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
           icon: <Truck className="w-3.5 h-3.5" />,
           label: STATUS_LABELS_TH[ExamStatus.DELIVERED],
         };
+      case ExamStatus.CANCELLED:
+        return {
+          bg: 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+          icon: null,
+          label: STATUS_LABELS_TH[ExamStatus.CANCELLED],
+        };
       default:
         return {
           bg: 'bg-slate-100',

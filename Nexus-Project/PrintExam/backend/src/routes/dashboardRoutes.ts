@@ -1,17 +1,12 @@
 import { Router, Response } from 'express';
 import { prisma } from '../database/prisma';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { requireRole } from '../middleware/rbac';
-import { UserRole, ExamStatus, Prisma } from '../../generated/prisma';
+import { ExamStatus, Prisma } from '../../generated/prisma';
 
 const router = Router();
 
 // Get summary metrics and filterable summary data (REQ-0014)
-router.get(
-  '/summary',
-  authenticateToken,
-  requireRole(UserRole.INSTRUCTOR, UserRole.AV_STAFF, UserRole.COORDINATOR, UserRole.ADMIN),
-  async (req: AuthRequest, res: Response): Promise<void> => {
+router.get('/summary', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   const {
     exam_date,
     course_code,
@@ -23,17 +18,11 @@ router.get(
     academic_year,
   } = req.query;
 
-  const user = req.user!;
-
   try {
-    // 1. Overall counts by status
-    const countWhere: Prisma.ExamWhereInput = {};
-    if (user.role === UserRole.INSTRUCTOR) {
-      countWhere.OR = [
-        { course: { instructorId: user.id } },
-        { createdById: user.id },
-      ];
-    }
+    // 1. Overall counts by status. The overview is intentionally system-wide
+    // and identical for every authenticated role; role-specific work remains
+    // in each role's dedicated operational pages.
+    const countWhere: Prisma.ExamWhereInput = { status: { not: ExamStatus.CANCELLED } };
 
     const rawCounts = await prisma.exam.groupBy({
       by: ['status'],
@@ -54,6 +43,7 @@ router.get(
       [ExamStatus.PACKED]: 0,
       [ExamStatus.READY_FOR_PICKUP]: 0,
       [ExamStatus.DELIVERED]: 0,
+      [ExamStatus.CANCELLED]: 0,
     };
 
     let total = 0;
@@ -64,16 +54,11 @@ router.get(
     statusCounts.TOTAL = total;
 
     // 2. Filtered Detailed Table Query (REQ-0014)
-    const listWhere: Prisma.ExamWhereInput = {};
+    const listWhere: Prisma.ExamWhereInput = { status: { not: ExamStatus.CANCELLED } };
     const courseFilter: Prisma.CourseWhereInput = {};
     const scheduleFilter: Prisma.ExamScheduleWhereInput = {};
 
-    if (user.role === UserRole.INSTRUCTOR) {
-      listWhere.OR = [
-        { course: { instructorId: user.id } },
-        { createdById: user.id },
-      ];
-    } else if (instructor_id) {
+    if (instructor_id) {
       courseFilter.instructorId = Number(instructor_id);
     }
 
@@ -131,6 +116,7 @@ router.get(
         { schedule: { examDate: 'asc' } },
         { course: { courseCode: 'asc' } },
       ],
+      take: 500,
     });
 
     const rows = exams.map((e) => ({
@@ -140,11 +126,8 @@ router.get(
       num_pages: e.numPages,
       is_double_sided: e.isDoubleSided ? 1 : 0,
       paper_size: e.paperSize,
-      original_filename: e.originalFilename,
-      file_url: e.fileUrl,
       submitted_at: e.submittedAt instanceof Date ? e.submittedAt.toISOString() : e.submittedAt,
       deadline_at: e.deadlineAt instanceof Date ? e.deadlineAt.toISOString() : e.deadlineAt,
-      rejection_reason: e.rejectionReason,
       course_id: e.courseId,
       course_code: e.course?.courseCode,
       course_name: e.course?.courseName,
@@ -181,7 +164,6 @@ router.get(
     console.error('[Dashboard Summary Error]', error);
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการดึงข้อมูลภาพรวม' });
   }
-  }
-);
+});
 
 export default router;

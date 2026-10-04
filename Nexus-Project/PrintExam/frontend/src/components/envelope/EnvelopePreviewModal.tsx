@@ -1,24 +1,25 @@
 import React from 'react';
 import { Modal } from '../common/Modal';
 import { Exam } from '../../types';
-import { Printer, Download, QrCode, CheckSquare, ShieldCheck } from 'lucide-react';
+import { Printer, Download } from 'lucide-react';
 import { examsApi } from '../../api/exams';
-import { openAuthenticatedDocument } from '../../utils/secureDocument';
+import { downloadAuthenticatedResource } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 
 interface EnvelopePreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   exam: Exam | null;
+  showActions?: boolean;
 }
 
 export const EnvelopePreviewModal: React.FC<EnvelopePreviewModalProps> = ({
   isOpen,
   onClose,
   exam,
+  showActions = true,
 }) => {
   const toast = useToast();
-
   if (!exam) return null;
 
   const actualCopies = exam.printed_copies ?? exam.print_records?.[0]?.printed_copies ?? exam.num_copies;
@@ -28,15 +29,27 @@ export const EnvelopePreviewModal: React.FC<EnvelopePreviewModalProps> = ({
   };
 
   const handleDownloadPdf = async () => {
-    const documentWindow = window.open('', '_blank');
-    try {
-      await openAuthenticatedDocument(() => examsApi.getEnvelopeLabel(exam.id), documentWindow);
-    } catch (err: any) {
-      toast.error('เปิด PDF ไม่สำเร็จ', err.response?.data?.message || 'คุณไม่มีสิทธิ์เข้าถึงเอกสารนี้');
-    }
+    await downloadAuthenticatedResource(
+      examsApi.getEnvelopeLabelUrl(exam.id),
+      `Envelope_Label_${exam.course_code || exam.id}.pdf`
+    );
   };
 
   const trackingCode = `ENV-${exam.course_code}-${exam.id}-${exam.academic_year || '2569'}`;
+  const examDate = exam.exam_date ? new Date(exam.exam_date) : null;
+  const validExamDate = examDate && !Number.isNaN(examDate.getTime());
+  const examDay = validExamDate ? examDate.getDate() : '-';
+  const examMonth = validExamDate ? examDate.toLocaleDateString('th-TH', { month: 'long' }) : '-';
+  const examYear = validExamDate ? examDate.getFullYear() + 543 : exam.academic_year || '-';
+  const lineClass = 'inline-block min-h-5 border-b border-dotted border-slate-700 px-2 font-semibold';
+  let selectedMaterials: string[] = [];
+  try {
+    const parsed = exam.allowed_materials ? JSON.parse(exam.allowed_materials) : [];
+    selectedMaterials = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    selectedMaterials = [];
+  }
+  const mark = (selected: boolean) => selected ? '( / )' : '(   )';
 
   return (
     <Modal
@@ -46,12 +59,13 @@ export const EnvelopePreviewModal: React.FC<EnvelopePreviewModalProps> = ({
       maxWidth="4xl"
     >
       <div className="space-y-4">
-        {/* Actions Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-          <div className="text-xs text-slate-600 dark:text-slate-300">
-            ระบบสร้างใบปะหน้าซองอัตโนมัติ พร้อมแถบตรวจสอบความปลอดภัย
-          </div>
-          <div className="flex items-center gap-2">
+        {/* Actions are omitted on the shared overview; operational pages retain them. */}
+        {showActions && (
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+            <div className="text-xs text-slate-600 dark:text-slate-300">
+              ระบบสร้างใบปะหน้าซองอัตโนมัติ พร้อมแถบตรวจสอบความปลอดภัย
+            </div>
+            <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 transition-colors shadow-xs"
@@ -60,188 +74,88 @@ export const EnvelopePreviewModal: React.FC<EnvelopePreviewModalProps> = ({
               สั่งพิมพ์ใบปะหน้า
             </button>
             <button
-              onClick={handleDownloadPdf}
+              onClick={() =>
+                void handleDownloadPdf().catch(() =>
+                  toast.error('ดาวน์โหลดไม่สำเร็จ', 'ไม่สามารถสร้างหรือดาวน์โหลดใบปะหน้าได้')
+                )
+              }
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white transition-colors shadow-xs"
             >
               <Download className="w-3.5 h-3.5" />
               ดาวน์โหลด PDF
             </button>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Printable Envelope Layout */}
+        {/* Printable Envelope Layout - follows the faculty's original envelope form */}
         <div
           id="printable-envelope"
-          className="border-2 border-slate-900 bg-white text-slate-900 p-6 rounded-lg font-sans shadow-md"
+          className="border-2 border-slate-900 bg-white p-6 text-[13px] text-slate-900 shadow-md"
         >
-          {/* Header Banner */}
-          <div className="bg-slate-900 text-white p-4 rounded-t flex items-center justify-between border-b-2 border-slate-900">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center font-black text-lg border border-white/30">
-                U
-              </div>
-              <div>
-                <h2 className="text-base font-extrabold tracking-wide uppercase">
-                  UNIVERSITY EXAMINATION CENTER
-                </h2>
-                <p className="text-xs text-slate-300">
-                  ศูนย์ประสานงานการสอบและพิมพ์ข้อสอบมาตรฐานมหาวิทยาลัย
-                </p>
-              </div>
+          <div className="mb-5 text-center">
+            <img src="/images/psu-official-logo.png" alt="ตรามหาวิทยาลัยสงขลานครินทร์" className="mx-auto h-20 w-auto object-contain" />
+            <div className="mt-1 text-lg font-extrabold">คณะวิทยาศาสตร์</div>
+            <div className="text-base font-bold">มหาวิทยาลัยสงขลานครินทร์</div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_11rem]">
+              <span>การสอบวิชา</span><span className={lineClass}>{exam.course_name}</span>
+              <span>รหัสวิชา</span><span className={lineClass}>{exam.course_code}</span>
             </div>
-            <div className="text-right">
-              <span className="inline-block bg-sky-500/20 text-sky-300 border border-sky-400/40 text-xs px-2.5 py-0.5 rounded font-bold">
-                ใบปะหน้าซองข้อสอบมาตรฐาน (FORM EXAM-01)
-              </span>
-              <div className="text-[11px] text-slate-400 mt-0.5">
-                ภาคเรียนที่ {exam.semester || 1} ปีการศึกษา {exam.academic_year || '2569'}
-              </div>
+            <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
+              <span>สอบวันที่</span><span className={`${lineClass} w-14 text-center`}>{examDay}</span>
+              <span>เดือน</span><span className={`${lineClass} w-28 text-center`}>{examMonth}</span>
+              <span>พ.ศ.</span><span className={`${lineClass} w-16 text-center`}>{examYear}</span>
+              <span>เวลา</span><span className={`${lineClass} min-w-40 text-center`}>{exam.start_time && exam.end_time ? `${exam.start_time} - ${exam.end_time}` : '-'} น.</span>
+            </div>
+            <div className="grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_1fr]">
+              <span>ห้องสอบ</span><span className={lineClass}>{exam.room || '-'}</span>
+              <span>เลขประจำซอง</span><span className={lineClass}>{trackingCode}</span>
+            </div>
+            <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
+              <span>จำนวนนักศึกษา</span><span className={`${lineClass} w-16 text-center`}>{exam.student_count ?? Math.max(actualCopies - (exam.reserve_copies ?? 2), 1)}</span><span>คน</span>
+            </div>
+            <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
+              <span>นศ.คณะ</span><span className={`${lineClass} min-w-52`}>วิทยาศาสตร์</span>
+              <span>ตอน</span><span className={`${lineClass} w-20 text-center`}>{exam.section || '-'}</span>
+              <span className="ml-4">ซองนี้มีข้อสอบ</span><span className={`${lineClass} w-16 text-center`}>{actualCopies}</span><span>ชุด</span>
+            </div>
+            <div className="flex items-end gap-2">
+              <span>ข้อสอบสำรอง</span><span className={`${lineClass} w-14 text-center`}>{exam.reserve_copies ?? 2}</span><span>ชุด</span>
             </div>
           </div>
 
-          {/* Sub Header / QR & Tracking */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border-x-2 border-b border-slate-900 bg-slate-50/50">
-            <div className="md:col-span-3 space-y-2">
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">รหัสวิชา:</span>
-                <span className="text-2xl font-black text-sky-900">{exam.course_code}</span>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs font-bold text-slate-500">ชื่อวิชา:</span>
-                <span className="text-base font-bold text-slate-800">{exam.course_name}</span>
-              </div>
-              <div className="flex items-center gap-4 text-xs text-slate-700 pt-1">
-                <div>
-                  <strong>อาจารย์ผู้สอน:</strong> {exam.instructor_name || '-'}
-                </div>
-                <div>
-                  <strong>ประเภทการสอบ:</strong> {exam.exam_type === 'MIDTERM' ? 'สอบกลางภาค' : 'สอบไล่ปลายภาค'}
-                </div>
-              </div>
+          <div className="mt-6">
+            <div className="text-center text-sm font-extrabold">อุปกรณ์ที่ใช้หรือคำแนะนำผู้คุมสอบเพิ่มเติม</div>
+            <div className="mt-3 grid gap-x-8 gap-y-2 md:grid-cols-2">
+              <div>{mark(selectedMaterials.includes('BOOK'))} นำตำราเข้าห้องสอบได้</div><div>{mark(Boolean(exam.special_instructions))} {exam.special_instructions || 'อื่น ๆ โปรดระบุ'}</div>
+              <div>{mark(selectedMaterials.includes('CALCULATOR'))} นำเครื่องคิดเลขเข้าห้องสอบได้</div><div>( &nbsp; ) <span className="inline-block w-4/5 border-b border-dotted border-slate-600">&nbsp;</span></div>
+              <div>{mark(selectedMaterials.includes('NO_FORMULA_RULER'))} ห้ามนำไม้บรรทัดมีสูตรคณิตศาสตร์เข้าห้องสอบ</div><div>( &nbsp; ) <span className="inline-block w-4/5 border-b border-dotted border-slate-600">&nbsp;</span></div>
             </div>
-
-            {/* Tracking barcode/QR representation */}
-            <div className="border border-slate-300 bg-white p-3 rounded flex flex-col items-center justify-center text-center">
-              <QrCode className="w-12 h-12 text-slate-800 mb-1" />
-              <div className="font-mono text-[10px] font-bold tracking-tight text-slate-700">{trackingCode}</div>
-              <div className="text-[9px] text-slate-400">SECURITY VERIFIED</div>
+            <div className="mt-4 grid grid-cols-[auto_1fr] gap-2">
+              <span>ผู้ออกข้อสอบ</span><span className={lineClass}>{exam.instructor_name || '-'}</span>
+            </div>
+            <div className="mt-3 grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_1fr]">
+              <span>ห้องทำงาน</span><span className={lineClass}>{exam.instructor_office_room || ''}</span>
+              <span>โทรศัพท์/มือถือ</span><span className={lineClass}>{exam.instructor_phone || ''}</span>
             </div>
           </div>
 
-          {/* Exam Schedule & Room Box */}
-          <div className="p-4 border-x-2 border-b border-slate-900 grid grid-cols-2 md:grid-cols-4 gap-3 bg-white">
-            <div className="bg-slate-100 p-2.5 rounded border border-slate-200">
-              <div className="text-[11px] font-semibold text-slate-500">วันสอบ (Exam Date)</div>
-              <div className="text-sm font-bold text-slate-800 mt-0.5">
-                {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString('th-TH') : 'ตามตารางสอบ'}
-              </div>
+          <div className="mt-5 border border-slate-900 p-4">
+            <div className="flex flex-wrap gap-x-8 gap-y-2">
+              <div>จำนวนนักศึกษาที่เข้าสอบ <span className="inline-block w-20 border-b border-dotted border-slate-700">&nbsp;</span> คน</div>
+              <div>จำนวนนักศึกษาที่ขาดสอบ <span className="inline-block w-20 border-b border-dotted border-slate-700">&nbsp;</span> คน คือ</div>
             </div>
-            <div className="bg-slate-100 p-2.5 rounded border border-slate-200">
-              <div className="text-[11px] font-semibold text-slate-500">เวลาสอบ (Time)</div>
-              <div className="text-sm font-bold text-slate-800 mt-0.5">
-                {exam.start_time && exam.end_time ? `${exam.start_time} - ${exam.end_time} น.` : 'ตามประกาศ'}
-              </div>
+            <div className="mt-3 grid grid-cols-[2rem_9rem_1fr] border-b border-slate-500 pb-1 text-center font-bold"><span></span><span>รหัส</span><span>ชื่อ-สกุล</span></div>
+            {[1, 2, 3].map((number) => (
+              <div key={number} className="grid grid-cols-[2rem_9rem_1fr] items-end py-2"><span>{number}.</span><span className="border-b border-dotted border-slate-600">&nbsp;</span><span className="ml-4 border-b border-dotted border-slate-600">&nbsp;</span></div>
+            ))}
+            <div className="mx-auto mt-4 max-w-md space-y-3">
+              {[1, 2, 3].map((number) => <div key={number} className="flex items-end gap-2"><span>{number}.</span><span className="flex-1 border-b border-dotted border-slate-600">&nbsp;</span><span>ผู้คุมสอบ</span></div>)}
             </div>
-            <div className="md:col-span-2 bg-rose-50 p-2.5 rounded border border-rose-200">
-              <div className="text-[11px] font-semibold text-rose-700">ห้องสอบ (Exam Room)</div>
-              <div className="text-base font-extrabold text-rose-900 mt-0.5">
-                {exam.room || 'ตามตารางจัดสอบ'}
-              </div>
-            </div>
-          </div>
-
-          {/* Printing Specs Box */}
-          <div className="p-4 border-x-2 border-b border-slate-900 bg-emerald-50/50">
-            <div className="text-xs font-bold text-emerald-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-700" />
-              <span>รายละเอียดการจัดพิมพ์และจำนวนชุด</span>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-              <div>
-                <span className="text-slate-500">จำนวนที่พิมพ์:</span>
-                <div className="text-xl font-black text-emerald-700">{actualCopies} ชุด</div>
-              </div>
-              <div>
-                <span className="text-slate-500">จำนวนหน้า/ชุด:</span>
-                <div className="text-sm font-bold text-slate-800">{exam.num_pages || 1} หน้า</div>
-              </div>
-              <div>
-                <span className="text-slate-500">รูปแบบการพิมพ์:</span>
-                <div className="text-sm font-bold text-slate-800">
-                  {exam.is_double_sided ? 'หน้า-หลัง (Double)' : 'หน้าเดียว (Single)'} [{exam.paper_size}]
-                </div>
-              </div>
-              <div>
-                <span className="text-slate-500">หมายเหตุพิเศษ:</span>
-                <div className="text-xs text-slate-700 italic">{exam.special_instructions || '-'}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Verification & Sign-off Columns */}
-          <div className="grid grid-cols-1 md:grid-cols-3 border-x-2 border-b-2 border-slate-900 divide-y md:divide-y-0 md:divide-x divide-slate-300 text-xs">
-            {/* Column 1: AV Staff */}
-            <div className="p-3 bg-white space-y-2">
-              <div className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded">
-                1. หน่วยโสตทัศนศึกษา (พิมพ์ & บรรจุ)
-              </div>
-              <div className="space-y-1 text-[11px] text-slate-600">
-                <div className="flex items-center gap-1.5">
-                  <CheckSquare className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span>ตรวจจำนวนครบถ้วน ({actualCopies} ชุด)</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <CheckSquare className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span>ปิดผนึกซองและซีลเรียบร้อย</span>
-                </div>
-              </div>
-              <div className="pt-2 text-[11px] text-slate-500">
-                <div>ผู้บรรจุ: ............................................</div>
-                <div className="mt-1">วันที่: ...... / ...... / ..........</div>
-              </div>
-            </div>
-
-            {/* Column 2: Dispatch / Handover */}
-            <div className="p-3 bg-white space-y-2">
-              <div className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded">
-                2. การส่งมอบข้อสอบ (Dispatch)
-              </div>
-              <div className="space-y-1 text-[11px] text-slate-600">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3.5 h-3.5 border border-slate-400 rounded-xs" />
-                  <span>ส่งมอบซองข้อสอบครบตามจำนวน</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3.5 h-3.5 border border-slate-400 rounded-xs" />
-                  <span>ซีลอยู่ในสภาพสมบูรณ์ ไม่มีการเปิด</span>
-                </div>
-              </div>
-              <div className="pt-2 text-[11px] text-slate-500">
-                <div>ผู้ส่งมอบ: ............................................</div>
-                <div className="mt-1">วันที่: ...... / ...... / ..........  เวลา: ........</div>
-              </div>
-            </div>
-
-            {/* Column 3: Coordinator Receiving */}
-            <div className="p-3 bg-white space-y-2">
-              <div className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded">
-                3. จนท.ดำเนินการสอบ (ผู้รับมอบ)
-              </div>
-              <div className="space-y-1 text-[11px] text-slate-600">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3.5 h-3.5 border border-slate-400 rounded-xs" />
-                  <span>ได้รับซองข้อสอบตามวิชา/ห้องสอบ</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3.5 h-3.5 border border-slate-400 rounded-xs" />
-                  <span>นำส่งเข้าห้องสอบตามกำหนดการ</span>
-                </div>
-              </div>
-              <div className="pt-2 text-[11px] text-slate-500">
-                <div>ผู้รับมอบ: {exam.coordinator_name || '............................................'}</div>
-                <div className="mt-1">วันที่: ...... / ...... / ..........  เวลา: ........</div>
-              </div>
-            </div>
+            <div className="mt-4">หมายเหตุ <span className="inline-block w-[85%] border-b border-dotted border-slate-600">&nbsp;</span></div>
           </div>
         </div>
       </div>

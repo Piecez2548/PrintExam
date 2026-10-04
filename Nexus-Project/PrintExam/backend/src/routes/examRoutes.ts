@@ -1,6 +1,5 @@
 import { Router, Response } from 'express';
 import fs from 'fs';
-import path from 'path';
 import { prisma } from '../database/prisma';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
@@ -10,24 +9,30 @@ import { recordAuditLog } from '../middleware/audit';
 import { broadcastEvent } from '../services/wsService';
 import { createNotification, notifyRole } from '../services/notificationService';
 import { ExamStatus, UserRole, Prisma } from '../../generated/prisma';
-import { canAccessExamFile as canAccessExamFileByRole } from '../security/examAccess';
+import { deleteStoredExamFile, persistExamUpload } from '../services/fileStorageService';
 
 const router = Router();
 
-function resolveExamFilePath(fileUrl: string | null): string | null {
-  const uploadPrefix = '/uploads/';
-  if (!fileUrl || !fileUrl.startsWith(uploadPrefix)) return null;
-
-  const filename = path.basename(fileUrl.slice(uploadPrefix.length));
-  if (!filename || filename === '.' || filename === '..') return null;
-
-  const uploadDir = path.resolve(__dirname, '../../uploads');
-  const filePath = path.resolve(uploadDir, filename);
-  if (filePath !== uploadDir && !filePath.startsWith(`${uploadDir}${path.sep}`)) return null;
-  return filePath;
+function removeUploadedFile(filePath?: string): void {
+  if (!filePath) return;
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch (error) {
+    console.error('[Upload Cleanup Error]', error);
+  }
 }
 
-/** ตรวจสิทธิ์แก้ไข/ยกเลิก: ต้องยังไม่ตัดข้อสอบ และเหลือเวลาก่อน deadline มากกว่า 2 วัน */
+/** A date-only deadline is inclusive until 23:59:59 in Thailand. */
+export function parseDeadlineAt(value: string | Date): Date {
+  if (value instanceof Date) return value;
+  const text = String(value).trim();
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(text)
+    ? new Date(`${text}T23:59:59.999+07:00`)
+    : new Date(text);
+  return parsed;
+}
+
+/** ตรวจสิทธิ์แก้ไข/ยกเลิก: ต้องยังไม่ตัดข้อสอบและอยู่ในช่วงเวลาที่อนุญาต */
 export function checkCanEditOrCancel(exam: any): { allowed: boolean; reason?: string } {
   // 1. A rejected exam must remain editable so the instructor can correct and resubmit it.
   const editableStatuses: ExamStatus[] = [ExamStatus.DRAFT, ExamStatus.SUBMITTED, ExamStatus.REJECTED];
@@ -38,9 +43,17 @@ export function checkCanEditOrCancel(exam: any): { allowed: boolean; reason?: st
     };
   }
 
-  // 2. Must be at least 2 days before deadline
+  // A rejected submission must remain correctable until the actual deadline;
+  // otherwise a late review could leave the instructor with no possible action.
   const now = new Date();
-  const deadline = new Date(exam.deadlineAt || exam.deadline_at);
+  const deadline = parseDeadlineAt(exam.deadlineAt || exam.deadline_at);
+  if (exam.status === ExamStatus.REJECTED) {
+    return now <= deadline
+      ? { allowed: true }
+      : { allowed: false, reason: 'ไม่สามารถแก้ไขข้อสอบได้ เนื่องจากเลยกำหนดส่งข้อสอบแล้ว' };
+  }
+
+  // Draft/submitted records lock two days before the deadline.
   const lockTime = new Date(deadline.getTime() - DEADLINE_EDIT_LOCK_DAYS * 24 * 60 * 60 * 1000);
 
   if (now > lockTime) {
@@ -65,8 +78,16 @@ export function formatExam(e: any) {
     file_type: e.fileType,
     file_size: e.fileSize,
     num_copies: e.numCopies,
+    student_count: e.studentCount,
+    reserve_copies: e.reserveCopies,
+    section: e.section || (e.schedule ? e.schedule.section : undefined),
     printed_copies: e.printRecords?.[0]?.printedCopies,
     num_pages: e.numPages,
+    exam_language: e.examLanguage,
+    print_format: e.printFormat,
+    allowed_materials: e.allowedMaterials,
+    requires_answer_sheet: e.requiresAnswerSheet,
+    exam_session_type: e.examSessionType,
     special_instructions: e.specialInstructions,
     is_double_sided: e.isDoubleSided ? 1 : 0,
     paper_size: e.paperSize,
@@ -87,6 +108,7 @@ export function formatExam(e: any) {
     instructor_name: e.course?.instructor ? e.course.instructor.fullName : undefined,
     instructor_email: e.course?.instructor ? e.course.instructor.email : undefined,
     instructor_phone: e.course?.instructor ? e.course.instructor.phone : undefined,
+    instructor_office_room: e.course?.instructor ? e.course.instructor.officeRoom : undefined,
     // Schedule relations
     exam_date: e.schedule ? e.schedule.examDate : undefined,
     start_time: e.schedule ? e.schedule.startTime : undefined,
@@ -97,12 +119,20 @@ export function formatExam(e: any) {
   };
 }
 
+function formatExamForUser(e: any, role: UserRole) {
+  const formatted = formatExam(e);
+  if (role === UserRole.COORDINATOR) {
+    formatted.file_url = null;
+    formatted.original_filename = null;
+    formatted.file_type = null;
+    formatted.file_size = null;
+    formatted.rejection_reason = null;
+  }
+  return formatted;
+}
+
 // Get exams list with role filtering (REQ-0004, REQ-0008, REQ-0014)
-router.get(
-  '/',
-  authenticateToken,
-  requireRole(UserRole.INSTRUCTOR, UserRole.AV_STAFF, UserRole.COORDINATOR, UserRole.ADMIN),
-  async (req: AuthRequest, res: Response): Promise<void> => {
+router.get('/', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   const { status, course_id, instructor_id, search } = req.query;
   const user = req.user!;
 
@@ -135,6 +165,9 @@ router.get(
         where.OR = instructorFilter.OR;
       }
     } else {
+      if (user.role === UserRole.COORDINATOR) {
+        where.status = { in: [ExamStatus.PACKED, ExamStatus.READY_FOR_PICKUP, ExamStatus.DELIVERED] };
+      }
       if (instructor_id) {
         where.course = { instructorId: Number(instructor_id) };
       }
@@ -150,7 +183,11 @@ router.get(
     }
 
     if (status && Object.values(ExamStatus).includes(status as ExamStatus)) {
-      where.status = status as ExamStatus;
+      const requestedStatus = status as ExamStatus;
+      const coordinatorStatuses: ExamStatus[] = [ExamStatus.PACKED, ExamStatus.READY_FOR_PICKUP, ExamStatus.DELIVERED];
+      if (user.role !== UserRole.COORDINATOR || coordinatorStatuses.includes(requestedStatus)) {
+        where.status = requestedStatus;
+      }
     }
 
     if (course_id) {
@@ -177,51 +214,13 @@ router.get(
         },
       },
       orderBy: { createdAt: 'desc' },
+      take: 500,
     });
 
-    res.json({ success: true, data: exams.map(formatExam) });
+    res.json({ success: true, data: exams.map((exam) => formatExamForUser(exam, user.role)) });
   } catch (error) {
     console.error('[Exam List Error]', error);
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการดึงรายการข้อสอบ' });
-  }
-  }
-);
-
-// Authenticated exam-file retrieval. Raw /uploads URLs are intentionally not used
-// because they cannot carry the bearer token and would make ownership checks easy to bypass.
-router.get('/:id/file', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
-  const examId = Number(req.params.id);
-
-  try {
-    const exam = await prisma.exam.findUnique({
-      where: { id: examId },
-      select: {
-        fileUrl: true,
-        createdById: true,
-        course: { select: { instructorId: true } },
-      },
-    });
-
-    if (!exam) {
-      res.status(404).json({ success: false, message: 'ไม่พบข้อสอบ' });
-      return;
-    }
-
-    if (!canAccessExamFileByRole(req.user, exam)) {
-      res.status(403).json({ success: false, message: 'คุณไม่มีสิทธิ์เข้าถึงไฟล์ข้อสอบนี้' });
-      return;
-    }
-
-    const filePath = resolveExamFilePath(exam.fileUrl);
-    if (!filePath || !fs.existsSync(filePath)) {
-      res.status(404).json({ success: false, message: 'ไม่พบไฟล์ข้อสอบ' });
-      return;
-    }
-
-    res.sendFile(filePath);
-  } catch (error) {
-    console.error('[Exam File Error]', error);
-    res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการดาวน์โหลดไฟล์ข้อสอบ' });
   }
 });
 
@@ -270,6 +269,11 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
     // Security check: Instructor can only view own exam
     if (user.role === UserRole.INSTRUCTOR && exam.course?.instructorId !== user.id && exam.createdById !== user.id) {
       res.status(403).json({ success: false, message: 'คุณไม่มีสิทธิ์เข้าถึงข้อมูลข้อสอบของรายวิชานี้' });
+      return;
+    }
+    const coordinatorVisibleStatuses: ExamStatus[] = [ExamStatus.PACKED, ExamStatus.READY_FOR_PICKUP, ExamStatus.DELIVERED];
+    if (user.role === UserRole.COORDINATOR && !coordinatorVisibleStatuses.includes(exam.status)) {
+      res.status(403).json({ success: false, message: 'เจ้าหน้าที่ดำเนินการสอบเข้าถึงรายการได้เมื่อเข้าสู่ขั้นตอนรับมอบแล้ว' });
       return;
     }
 
@@ -321,7 +325,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
     res.json({
       success: true,
       data: {
-        ...formatExam(exam),
+        ...formatExamForUser(exam, user.role),
         status_history: formattedHistory,
         print_records: formattedPrintRecords,
         packing_records: formattedPackingRecords,
@@ -340,9 +344,11 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
 router.post(
   '/',
   authenticateToken,
-  requireRole(UserRole.INSTRUCTOR),
+  requireRole(UserRole.INSTRUCTOR, UserRole.ADMIN),
   uploadExamFile.single('file'),
   async (req: AuthRequest, res: Response): Promise<void> => {
+  let uploadPersisted = false;
+  let pendingStoredFileUrl: string | null = null;
   let {
     course_id,
     course_code,
@@ -352,7 +358,15 @@ router.post(
     department,
     schedule_id,
     num_copies,
+    student_count,
+    reserve_copies,
+    section,
     num_pages,
+    exam_language,
+    print_format,
+    allowed_materials,
+    requires_answer_sheet,
+    exam_session_type,
     special_instructions,
     is_double_sided,
     paper_size,
@@ -363,7 +377,27 @@ router.post(
   const user = req.user!;
 
   try {
-    // If instructor typed course_code / course_name directly instead of choosing existing course_id
+    // A coordinator-owned, non-cancelled schedule is the canonical source for course/date/time/room/deadline.
+    const schedId = schedule_id ? Number(schedule_id) : null;
+    let selectedSchedule = schedId
+      ? await prisma.examSchedule.findUnique({ where: { id: schedId }, include: { course: true } })
+      : null;
+
+    if (user.role === UserRole.INSTRUCTOR) {
+      if (!selectedSchedule || selectedSchedule.status === 'CANCELLED') {
+        removeUploadedFile(req.file?.path);
+        res.status(400).json({ success: false, message: 'กรุณาเลือกตารางสอบที่เจ้าหน้าที่ดำเนินการสอบกำหนดไว้' });
+        return;
+      }
+      if (selectedSchedule.course.instructorId !== user.id) {
+        removeUploadedFile(req.file?.path);
+        res.status(403).json({ success: false, message: 'ตารางสอบนี้ไม่ใช่รายวิชาที่คุณเป็นผู้สอน' });
+        return;
+      }
+      course_id = selectedSchedule.courseId;
+    }
+
+    // Admin may still create a course-backed record for correction/migration work.
     let finalCourseId = course_id ? Number(course_id) : undefined;
     if (!finalCourseId && course_code) {
       const existingCourse = await prisma.course.findFirst({
@@ -391,6 +425,7 @@ router.post(
     }
 
     if (!finalCourseId) {
+      removeUploadedFile(req.file?.path);
       res.status(400).json({ success: false, message: 'กรุณากรอกรหัสวิชาและชื่อวิชาที่สอน' });
       return;
     }
@@ -400,43 +435,40 @@ router.post(
     });
 
     if (!course) {
+      removeUploadedFile(req.file?.path);
       res.status(404).json({ success: false, message: 'ไม่พบข้อมูลรายวิชา' });
       return;
     }
 
     // Check instructor authorization
     if (user.role === UserRole.INSTRUCTOR && course.instructorId !== user.id) {
+      removeUploadedFile(req.file?.path);
       res.status(403).json({ success: false, message: 'คุณสามารถส่งข้อสอบเฉพาะวิชาที่คุณเป็นผู้สอนเท่านั้น' });
       return;
     }
 
-    // Use the visible deadline supplied by the form. A schedule deadline remains authoritative.
-    let deadlineAt = deadline_at ? new Date(deadline_at) : new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+    // A schedule deadline remains authoritative; request data is only an admin fallback.
+    let deadlineAt = deadline_at ? parseDeadlineAt(deadline_at) : new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
     if (Number.isNaN(deadlineAt.getTime())) {
+      removeUploadedFile(req.file?.path);
       res.status(400).json({ success: false, message: 'รูปแบบกำหนดส่งข้อสอบไม่ถูกต้อง' });
       return;
     }
-    const schedId = schedule_id ? Number(schedule_id) : null;
     if (schedId) {
-      const sched = await prisma.examSchedule.findUnique({ where: { id: schedId }, include: { course: true } });
-      if (!sched) {
-        res.status(404).json({ success: false, message: 'ไม่พบกำหนดการสอบที่เลือก' });
+      selectedSchedule = selectedSchedule || await prisma.examSchedule.findUnique({ where: { id: schedId }, include: { course: true } });
+      if (!selectedSchedule || selectedSchedule.courseId !== finalCourseId) {
+        removeUploadedFile(req.file?.path);
+        res.status(400).json({ success: false, message: 'ตารางสอบไม่ตรงกับรายวิชาที่เลือก' });
         return;
       }
-      if (sched.courseId !== finalCourseId) {
-        res.status(400).json({ success: false, message: 'กำหนดการสอบไม่ตรงกับรายวิชาที่เลือก' });
+      if (selectedSchedule.deadlineDate) deadlineAt = parseDeadlineAt(selectedSchedule.deadlineDate);
+      const existingSubmission = await prisma.exam.findFirst({
+        where: { scheduleId: schedId, status: { not: ExamStatus.CANCELLED } },
+      });
+      if (existingSubmission) {
+        removeUploadedFile(req.file?.path);
+        res.status(409).json({ success: false, message: 'ตารางสอบนี้มีรายการส่งข้อสอบแล้ว กรุณาแก้ไขรายการเดิม' });
         return;
-      }
-      if (sched.status === 'CANCELLED') {
-        res.status(400).json({ success: false, message: 'ไม่สามารถส่งข้อสอบตามกำหนดการที่ถูกยกเลิกแล้ว' });
-        return;
-      }
-      if (sched.course.instructorId !== user.id) {
-        res.status(403).json({ success: false, message: 'คุณไม่มีสิทธิ์ใช้กำหนดการสอบของรายวิชานี้' });
-        return;
-      }
-      if (sched.deadlineDate) {
-        deadlineAt = new Date(sched.deadlineDate);
       }
     }
 
@@ -461,27 +493,41 @@ router.post(
     }
 
     const initialStatus = is_draft === 'true' || is_draft === true ? ExamStatus.DRAFT : ExamStatus.SUBMITTED;
-    if (initialStatus === ExamStatus.SUBMITTED) {
-      const minimumDeadline = Date.now() + DEADLINE_EDIT_LOCK_DAYS * 24 * 60 * 60 * 1000;
-      if (deadlineAt.getTime() <= minimumDeadline) {
-        res.status(400).json({ success: false, message: 'กำหนดส่งต้องห่างจากเวลาปัจจุบันมากกว่า 2 วัน' });
+    if (initialStatus === ExamStatus.SUBMITTED && !req.file) {
+      res.status(400).json({ success: false, message: 'กรุณาแนบไฟล์ข้อสอบก่อนส่งตรวจสอบ' });
+      return;
+    }
+    if (deadlineAt.getTime() < Date.now()) {
+        removeUploadedFile(req.file?.path);
+        res.status(400).json({ success: false, message: 'พ้นกำหนดส่งข้อสอบแล้ว กรุณาติดต่อเจ้าหน้าที่ดำเนินการสอบ' });
         return;
-      }
     }
     const submittedAt = initialStatus === ExamStatus.SUBMITTED ? new Date() : null;
-    const copies = Number(num_copies);
-    if (!Number.isInteger(copies) || copies < 1) {
-      res.status(400).json({ success: false, message: 'กรุณาระบุจำนวนชุดที่ต้องการพิมพ์อย่างน้อย 1 ชุด' });
+    const students = Number(student_count || num_copies);
+    const reserves = Number(reserve_copies ?? 2);
+    const copies = students + reserves;
+    const normalizedSection = String(section ?? selectedSchedule?.section ?? course.section ?? '').trim();
+    if (normalizedSection.length > 20) {
+      removeUploadedFile(req.file?.path);
+      res.status(400).json({ success: false, message: 'ตอนเรียนต้องมีความยาวไม่เกิน 20 ตัวอักษร' });
       return;
     }
-    const pages = Number(num_pages || 1);
-    if (!Number.isInteger(pages) || pages < 1) {
-      res.status(400).json({ success: false, message: 'จำนวนหน้าต้องเป็นจำนวนเต็มอย่างน้อย 1 หน้า' });
+    if (!Number.isInteger(students) || students < 1 || !Number.isInteger(reserves) || reserves < 0 || reserves > 20) {
+      removeUploadedFile(req.file?.path);
+      res.status(400).json({ success: false, message: 'จำนวนผู้เข้าสอบหรือจำนวนชุดสำรองไม่ถูกต้อง' });
       return;
     }
-    if (initialStatus === ExamStatus.SUBMITTED && !fileUrl) {
-      res.status(400).json({ success: false, message: 'การส่งข้อสอบต้องแนบไฟล์ .pdf, .docx หรือ .doc' });
+    const supportedLanguages = ['THAI', 'ENGLISH', 'BILINGUAL'];
+    const supportedPrintFormats = ['SINGLE_SIDED', 'DOUBLE_SIDED', 'BOOKLET', 'OTHER'];
+    const supportedSessionTypes = ['IN_SCHEDULE', 'OUT_OF_SCHEDULE'];
+    if (!supportedLanguages.includes(exam_language || 'THAI') || !supportedPrintFormats.includes(print_format || 'DOUBLE_SIDED') || !supportedSessionTypes.includes(exam_session_type || 'IN_SCHEDULE')) {
+      removeUploadedFile(req.file?.path);
+      res.status(400).json({ success: false, message: 'รูปแบบภาษา การพิมพ์ หรือประเภทการสอบไม่ถูกต้อง' });
       return;
+    }
+    if (req.file) {
+      fileUrl = await persistExamUpload(req.file);
+      pendingStoredFileUrl = fileUrl;
     }
 
     const newExam = await prisma.exam.create({
@@ -493,7 +539,15 @@ router.post(
         fileType,
         fileSize,
         numCopies: copies,
-        numPages: pages,
+        studentCount: students,
+        reserveCopies: reserves,
+        section: normalizedSection || null,
+        numPages: Number(num_pages || 1),
+        examLanguage: exam_language || 'THAI',
+        printFormat: print_format || 'DOUBLE_SIDED',
+        allowedMaterials: allowed_materials || null,
+        requiresAnswerSheet: requires_answer_sheet === 'true' || requires_answer_sheet === true,
+        examSessionType: exam_session_type || 'IN_SCHEDULE',
         specialInstructions: special_instructions || null,
         isDoubleSided: is_double_sided === 'false' || is_double_sided === 0 ? false : true,
         paperSize: paper_size || 'A4',
@@ -514,6 +568,8 @@ router.post(
         },
       },
     });
+    uploadPersisted = true;
+    pendingStoredFileUrl = null;
 
     // Notify AV Staff if submitted
     if (initialStatus === ExamStatus.SUBMITTED) {
@@ -545,19 +601,20 @@ router.post(
       data: { id: newExam.id, status: initialStatus },
     });
   } catch (error) {
+    if (pendingStoredFileUrl) await deleteStoredExamFile(pendingStoredFileUrl);
+    else if (!uploadPersisted) removeUploadedFile(req.file?.path);
     console.error('[Submit Exam Error]', error);
+    if ((error as { code?: string }).code === 'P2002') {
+      res.status(409).json({ success: false, message: 'รอบสอบนี้มีการส่งข้อสอบแล้ว กรุณาเปิดรายการเดิมแทน' });
+      return;
+    }
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการส่งข้อสอบ' });
   }
   }
 );
 
 // Update / Edit exam (REQ-0005)
-router.put(
-  '/:id',
-  authenticateToken,
-  requireRole(UserRole.INSTRUCTOR, UserRole.ADMIN),
-  uploadExamFile.single('file'),
-  async (req: AuthRequest, res: Response): Promise<void> => {
+router.put('/:id', authenticateToken, uploadExamFile.single('file'), async (req: AuthRequest, res: Response): Promise<void> => {
   const { id } = req.params;
   const user = req.user!;
   const examId = Number(id);
@@ -565,12 +622,22 @@ router.put(
     course_id,
     schedule_id,
     num_copies,
+    student_count,
+    reserve_copies,
+    section,
     num_pages,
+    exam_language,
+    print_format,
+    allowed_materials,
+    requires_answer_sheet,
+    exam_session_type,
     special_instructions,
     is_double_sided,
     paper_size,
     is_draft,
   } = req.body;
+  let uploadPersisted = false;
+  let pendingStoredFileUrl: string | null = null;
 
   try {
     const exam = await prisma.exam.findUnique({
@@ -578,34 +645,61 @@ router.put(
     });
 
     if (!exam) {
+      removeUploadedFile(req.file?.path);
       res.status(404).json({ success: false, message: 'ไม่พบข้อมูลข้อสอบ' });
       return;
     }
 
-    // Security check: Only owner or admin can edit.
-    if (user.role === UserRole.INSTRUCTOR && exam.createdById !== user.id) {
+    // Only the owner or an administrator may edit an exam.
+    if (user.role !== UserRole.ADMIN && exam.createdById !== user.id) {
+      removeUploadedFile(req.file?.path);
       res.status(403).json({ success: false, message: 'คุณไม่มีสิทธิ์แก้ไขข้อสอบชุดนี้' });
       return;
-    }
-
-    if (user.role === UserRole.INSTRUCTOR && course_id !== undefined) {
-      const targetCourse = await prisma.course.findUnique({
-        where: { id: Number(course_id) },
-        select: { instructorId: true },
-      });
-      if (!targetCourse || targetCourse.instructorId !== user.id) {
-        res.status(403).json({ success: false, message: 'คุณไม่สามารถย้ายข้อสอบไปยังรายวิชาของอาจารย์ท่านอื่นได้' });
-        return;
-      }
     }
 
     // REQ-0005 Rule Verification
     if (user.role === UserRole.INSTRUCTOR) {
       const editCheck = checkCanEditOrCancel(exam);
       if (!editCheck.allowed) {
+        removeUploadedFile(req.file?.path);
         res.status(403).json({ success: false, message: editCheck.reason });
         return;
       }
+    }
+
+    if (course_id !== undefined) {
+      const nextCourse = await prisma.course.findUnique({ where: { id: Number(course_id) } });
+      if (!nextCourse || (user.role === UserRole.INSTRUCTOR && nextCourse.instructorId !== user.id)) {
+        removeUploadedFile(req.file?.path);
+        res.status(403).json({ success: false, message: 'คุณไม่มีสิทธิ์ย้ายข้อสอบไปยังรายวิชานี้' });
+        return;
+      }
+    }
+
+    const nextCourseId = course_id ? Number(course_id) : exam.courseId;
+    let nextScheduleDeadline: Date | undefined;
+    if (schedule_id) {
+      const nextSchedule = await prisma.examSchedule.findUnique({ where: { id: Number(schedule_id) } });
+      if (!nextSchedule || nextSchedule.courseId !== nextCourseId) {
+        removeUploadedFile(req.file?.path);
+        res.status(400).json({ success: false, message: 'ตารางสอบไม่ตรงกับรายวิชาที่เลือก' });
+        return;
+      }
+      if (user.role === UserRole.INSTRUCTOR && nextSchedule.status === 'CANCELLED') {
+        removeUploadedFile(req.file?.path);
+        res.status(400).json({ success: false, message: 'ไม่สามารถเลือกตารางสอบที่ถูกยกเลิกได้' });
+        return;
+      }
+      const occupied = await prisma.exam.findFirst({
+        where: { scheduleId: nextSchedule.id, id: { not: examId }, status: { not: ExamStatus.CANCELLED } },
+        select: { id: true },
+      });
+      if (occupied) {
+        removeUploadedFile(req.file?.path);
+        res.status(409).json({ success: false, message: 'ตารางสอบนี้มีรายการส่งข้อสอบแล้ว' });
+        return;
+      }
+      nextScheduleDeadline = parseDeadlineAt(nextSchedule.deadlineDate);
     }
 
     let fileUrl = exam.fileUrl;
@@ -635,61 +729,50 @@ router.put(
       }
     }
 
-    let nextDeadlineAt = exam.deadlineAt;
-    if (schedule_id !== undefined && schedule_id) {
-      const schedule = await prisma.examSchedule.findUnique({
-        where: { id: Number(schedule_id) },
-        include: { course: true },
-      });
-      if (!schedule) {
-        res.status(404).json({ success: false, message: 'ไม่พบกำหนดการสอบที่เลือก' });
-        return;
-      }
-      if (schedule.course.instructorId !== user.id && user.role === UserRole.INSTRUCTOR) {
-        res.status(403).json({ success: false, message: 'คุณไม่มีสิทธิ์ใช้กำหนดการสอบของรายวิชานี้' });
-        return;
-      }
-      if (schedule.status === 'CANCELLED') {
-        res.status(400).json({ success: false, message: 'ไม่สามารถใช้กำหนดการสอบที่ถูกยกเลิกแล้ว' });
-        return;
-      }
-      nextDeadlineAt = new Date(schedule.deadlineDate);
-    }
-
-    if (num_copies !== undefined && (!Number.isInteger(Number(num_copies)) || Number(num_copies) < 1)) {
-      res.status(400).json({ success: false, message: 'จำนวนชุดต้องเป็นจำนวนเต็มอย่างน้อย 1 ชุด' });
-      return;
-    }
-    if (num_pages !== undefined && (!Number.isInteger(Number(num_pages)) || Number(num_pages) < 1)) {
-      res.status(400).json({ success: false, message: 'จำนวนหน้าต้องเป็นจำนวนเต็มอย่างน้อย 1 หน้า' });
-      return;
-    }
     if (newStatus === ExamStatus.SUBMITTED && !fileUrl) {
-      res.status(400).json({ success: false, message: 'การส่งข้อสอบต้องแนบไฟล์ .pdf, .docx หรือ .doc' });
+      removeUploadedFile(req.file?.path);
+      res.status(400).json({ success: false, message: 'กรุณาแนบไฟล์ข้อสอบก่อนส่งตรวจสอบ' });
       return;
     }
-    if (newStatus === ExamStatus.SUBMITTED) {
-      const lockTime = nextDeadlineAt.getTime() - DEADLINE_EDIT_LOCK_DAYS * 24 * 60 * 60 * 1000;
-      if (Date.now() > lockTime) {
-        res.status(400).json({ success: false, message: 'ไม่สามารถส่งหรือส่งแก้ไขได้ เนื่องจากเหลือเวลาไม่ถึง 2 วันก่อน Deadline' });
-        return;
-      }
+
+    const nextReserves = reserve_copies !== undefined ? Number(reserve_copies) : exam.reserveCopies;
+    const legacyTotal = num_copies !== undefined ? Number(num_copies) : undefined;
+    const nextStudents = student_count !== undefined
+      ? Number(student_count)
+      : legacyTotal !== undefined && Number.isInteger(legacyTotal)
+        ? Math.max(legacyTotal - nextReserves, 1)
+        : exam.studentCount;
+    if (!Number.isInteger(nextStudents) || nextStudents < 1 || !Number.isInteger(nextReserves) || nextReserves < 0 || nextReserves > 20) {
+      removeUploadedFile(req.file?.path);
+      res.status(400).json({ success: false, message: 'จำนวนผู้เข้าสอบหรือจำนวนชุดสำรองไม่ถูกต้อง' });
+      return;
+    }
+    if (req.file) {
+      fileUrl = await persistExamUpload(req.file);
+      pendingStoredFileUrl = fileUrl;
     }
 
-    const updated = await prisma.exam.update({
-      where: { id: examId },
-      data: {
+    await prisma.$transaction(async (tx) => {
+      await tx.exam.update({
+        where: { id: examId },
+        data: {
         courseId: course_id ? Number(course_id) : undefined,
         scheduleId: schedule_id !== undefined ? (schedule_id ? Number(schedule_id) : null) : undefined,
+        deadlineAt: nextScheduleDeadline,
         fileUrl,
         originalFilename,
         fileType,
         fileSize,
-        numCopies:
-          num_copies !== undefined && Number.isInteger(Number(num_copies)) && Number(num_copies) >= 1
-            ? Number(num_copies)
-            : undefined,
+        numCopies: student_count !== undefined || reserve_copies !== undefined || legacyTotal !== undefined ? nextStudents + nextReserves : undefined,
+        studentCount: student_count !== undefined || legacyTotal !== undefined ? nextStudents : undefined,
+        reserveCopies: reserve_copies !== undefined ? nextReserves : undefined,
+        section: section !== undefined ? String(section).trim() || null : undefined,
         numPages: num_pages !== undefined ? Number(num_pages) : undefined,
+        examLanguage: exam_language !== undefined ? exam_language : undefined,
+        printFormat: print_format !== undefined ? print_format : undefined,
+        allowedMaterials: allowed_materials !== undefined ? allowed_materials || null : undefined,
+        requiresAnswerSheet: requires_answer_sheet !== undefined ? requires_answer_sheet === 'true' || requires_answer_sheet === true : undefined,
+        examSessionType: exam_session_type !== undefined ? exam_session_type : undefined,
         specialInstructions: special_instructions !== undefined ? special_instructions : undefined,
         isDoubleSided:
           is_double_sided !== undefined
@@ -699,23 +782,28 @@ router.put(
             : undefined,
         paperSize: paper_size !== undefined ? paper_size : undefined,
         status: newStatus,
-        deadlineAt: nextDeadlineAt,
-        submittedAt: newStatus === ExamStatus.SUBMITTED ? new Date() : undefined,
-      },
-    });
-
-    if (newStatus !== exam.status) {
-      await prisma.examStatusHistory.create({
-        data: {
-          examId,
-          fromStatus: exam.status,
-          toStatus: newStatus,
-          actionById: user.id,
-          actionName: user.full_name,
-          note: 'แก้ไขข้อมูลและส่งข้อสอบใหม่',
+        submittedAt: newStatus === ExamStatus.SUBMITTED && !exam.submittedAt ? new Date() : undefined,
         },
       });
+      if (newStatus !== exam.status) {
+        await tx.examStatusHistory.create({
+          data: {
+            examId,
+            fromStatus: exam.status,
+            toStatus: newStatus,
+            actionById: user.id,
+            actionName: user.full_name,
+            note: 'แก้ไขข้อมูลและส่งข้อสอบใหม่',
+          },
+        });
+      }
+    });
+    uploadPersisted = true;
+    pendingStoredFileUrl = null;
 
+    if (req.file && exam.fileUrl && exam.fileUrl !== fileUrl) await deleteStoredExamFile(exam.fileUrl);
+
+    if (newStatus !== exam.status) {
       await notifyRole(
         UserRole.AV_STAFF,
         'EXAM_RESUBMITTED',
@@ -733,18 +821,15 @@ router.put(
 
     res.json({ success: true, message: 'แก้ไขข้อมูลข้อสอบเรียบร้อยแล้ว' });
   } catch (error) {
+    if (pendingStoredFileUrl) await deleteStoredExamFile(pendingStoredFileUrl);
+    else if (!uploadPersisted) removeUploadedFile(req.file?.path);
     console.error('[Update Exam Error]', error);
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการแก้ไขข้อมูลข้อสอบ' });
   }
-  }
-);
+});
 
 // Delete / Cancel exam (REQ-0005)
-router.delete(
-  '/:id',
-  authenticateToken,
-  requireRole(UserRole.INSTRUCTOR, UserRole.ADMIN),
-  async (req: AuthRequest, res: Response): Promise<void> => {
+router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   const { id } = req.params;
   const user = req.user!;
   const examId = Number(id);
@@ -759,8 +844,8 @@ router.delete(
       return;
     }
 
-    // Security check: Only owner or admin
-    if (user.role === UserRole.INSTRUCTOR && exam.createdById !== user.id) {
+    // Only the owner or an administrator may cancel an exam.
+    if (user.role !== UserRole.ADMIN && exam.createdById !== user.id) {
       res.status(403).json({ success: false, message: 'คุณไม่มีสิทธิ์ยกเลิกข้อสอบนี้' });
       return;
     }
@@ -774,23 +859,42 @@ router.delete(
       }
     }
 
-    await prisma.exam.delete({
-      where: { id: examId },
-    });
+    await prisma.$transaction([
+      prisma.exam.update({
+        where: { id: examId },
+        data: {
+          status: ExamStatus.CANCELLED,
+          fileUrl: null,
+          originalFilename: null,
+          fileType: null,
+          fileSize: 0,
+        },
+      }),
+      prisma.examStatusHistory.create({
+        data: {
+          examId,
+          fromStatus: exam.status,
+          toStatus: ExamStatus.CANCELLED,
+          actionById: user.id,
+          actionName: user.full_name,
+          note: 'ยกเลิกรายการส่งข้อสอบ โดยเก็บข้อมูลและประวัติการดำเนินงานไว้',
+        },
+      }),
+    ]);
+    await deleteStoredExamFile(exam.fileUrl);
 
     await recordAuditLog(user.id, user.full_name, user.role, 'CANCEL_EXAM', 'EXAM', id, req.ip || '127.0.0.1', {
       deleted_exam_id: id,
       status_at_cancel: exam.status,
     });
 
-    broadcastEvent('EXAM_DELETED', { examId });
+    broadcastEvent('EXAM_STATUS_CHANGED', { examId, fromStatus: exam.status, toStatus: ExamStatus.CANCELLED });
 
-    res.json({ success: true, message: 'ยกเลิกรายการข้อสอบเรียบร้อยแล้ว' });
+    res.json({ success: true, message: 'ยกเลิกรายการข้อสอบเรียบร้อยแล้ว และยังเก็บประวัติไว้ในระบบ' });
   } catch (error) {
     console.error('[Cancel Exam Error]', error);
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการยกเลิกข้อสอบ' });
   }
-  }
-);
+});
 
 export default router;

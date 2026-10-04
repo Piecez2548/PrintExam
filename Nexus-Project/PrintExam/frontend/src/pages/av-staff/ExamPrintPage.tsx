@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { examsApi } from '../../api/exams';
-import { openAuthenticatedDocument } from '../../utils/secureDocument';
+import { downloadAuthenticatedResource } from '../../api/client';
 import { Exam, ExamStatus } from '../../types';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { EnvelopePreviewModal } from '../../components/envelope/EnvelopePreviewModal';
@@ -51,16 +51,6 @@ export const ExamPrintPage: React.FC = () => {
   useEffect(() => {
     fetchExam();
   }, [id]);
-
-  const handleOpenFile = async () => {
-    if (!id) return;
-    const documentWindow = window.open('', '_blank');
-    try {
-      await openAuthenticatedDocument(() => examsApi.getExamFile(id), documentWindow);
-    } catch (err: any) {
-      toast.error('เปิดไฟล์ไม่สำเร็จ', err.response?.data?.message || 'คุณไม่มีสิทธิ์เข้าถึงไฟล์นี้');
-    }
-  };
 
   // Handle Print Action (REQ-0009)
   const handleRecordPrint = async (markCompleted: boolean) => {
@@ -145,7 +135,10 @@ export const ExamPrintPage: React.FC = () => {
             {exam.file_url && (
               <button
                 type="button"
-                onClick={handleOpenFile}
+                onClick={() =>
+                  void downloadAuthenticatedResource(exam.file_url!, exam.original_filename || `exam-${exam.id}`)
+                    .catch(() => toast.error('ดาวน์โหลดไม่สำเร็จ', 'ไม่สามารถดาวน์โหลดไฟล์ข้อสอบได้'))
+                }
                 className="text-brand-600 font-semibold hover:underline inline-flex items-center gap-1 mt-1"
               >
                 <Download className="w-3 h-3" />

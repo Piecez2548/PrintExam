@@ -7,7 +7,6 @@ import { broadcastEvent } from '../services/wsService';
 import { createNotification } from '../services/notificationService';
 import { generateEnvelopeLabelPdf } from '../services/pdfService';
 import { ExamStatus, UserRole } from '../../generated/prisma';
-import { canTransitionExamStatus, transitionErrorMessage } from '../security/examStatus';
 
 const router = Router();
 
@@ -35,6 +34,11 @@ router.post(
         return;
       }
 
+      if (exam.status !== ExamStatus.SUBMITTED) {
+        res.status(409).json({ success: false, message: `อนุมัติได้เฉพาะข้อสอบสถานะ SUBMITTED (ปัจจุบัน: ${exam.status})` });
+        return;
+      }
+
       // Automatic file completeness check (REQ-0006)
       if (!exam.fileUrl) {
         res.status(400).json({ success: false, message: 'ไม่พบไฟล์ข้อสอบในระบบ กรุณาให้อาจารย์อัปโหลดไฟล์ก่อน' });
@@ -44,30 +48,22 @@ router.post(
       const previousStatus = exam.status;
       const newStatus = ExamStatus.APPROVED;
 
-      if (!canTransitionExamStatus(previousStatus, newStatus)) {
-        res.status(409).json({ success: false, message: transitionErrorMessage(previousStatus, newStatus) });
-        return;
-      }
-
-      await prisma.exam.update({
-        where: { id: examId },
-        data: {
-          status: newStatus,
-          rejectionReason: null,
-        },
-      });
-
-      await prisma.examStatusHistory.create({
-        data: {
-          examId,
-          fromStatus: previousStatus,
-          toStatus: newStatus,
-          actionById: user.id,
-          actionName: user.full_name,
-          note: notes || 'ตรวจสอบไฟล์ถูกต้อง อนุมัติและตัดข้อสอบเรียบร้อย',
-        },
-      });
-
+      await prisma.$transaction([
+        prisma.exam.update({
+          where: { id: examId },
+          data: { status: newStatus, rejectionReason: null },
+        }),
+        prisma.examStatusHistory.create({
+          data: {
+            examId,
+            fromStatus: previousStatus,
+            toStatus: newStatus,
+            actionById: user.id,
+            actionName: user.full_name,
+            note: notes || 'ตรวจสอบไฟล์ถูกต้อง อนุมัติและตัดข้อสอบเรียบร้อย',
+          },
+        }),
+      ]);
       // Notify instructor (REQ-0006, REQ-0008)
       await createNotification(
         exam.createdById,
@@ -130,32 +126,30 @@ router.post(
         return;
       }
 
-      const previousStatus = exam.status;
-      const newStatus = ExamStatus.REJECTED;
-
-      if (!canTransitionExamStatus(previousStatus, newStatus)) {
-        res.status(409).json({ success: false, message: transitionErrorMessage(previousStatus, newStatus) });
+      if (exam.status !== ExamStatus.SUBMITTED) {
+        res.status(409).json({ success: false, message: `ส่งกลับแก้ไขได้เฉพาะข้อสอบสถานะ SUBMITTED (ปัจจุบัน: ${exam.status})` });
         return;
       }
 
-      await prisma.exam.update({
-        where: { id: examId },
-        data: {
-          status: newStatus,
-          rejectionReason: reason,
-        },
-      });
+      const previousStatus = exam.status;
+      const newStatus = ExamStatus.REJECTED;
 
-      await prisma.examStatusHistory.create({
-        data: {
-          examId,
-          fromStatus: previousStatus,
-          toStatus: newStatus,
-          actionById: user.id,
-          actionName: user.full_name,
-          note: `ส่งกลับเพื่อแก้ไข: ${reason}`,
-        },
-      });
+      await prisma.$transaction([
+        prisma.exam.update({
+          where: { id: examId },
+          data: { status: newStatus, rejectionReason: reason.trim().slice(0, 1000) },
+        }),
+        prisma.examStatusHistory.create({
+          data: {
+            examId,
+            fromStatus: previousStatus,
+            toStatus: newStatus,
+            actionById: user.id,
+            actionName: user.full_name,
+            note: `ส่งกลับเพื่อแก้ไข: ${reason.trim().slice(0, 1000)}`,
+          },
+        }),
+      ]);
 
       // Notify instructor with reason (REQ-0007)
       await createNotification(
@@ -214,47 +208,41 @@ router.post(
         return;
       }
 
-      const copies = Number(printed_copies || exam.numCopies);
+      if (exam.status !== ExamStatus.APPROVED && exam.status !== ExamStatus.PRINTING) {
+        res.status(409).json({ success: false, message: `เริ่มหรือบันทึกการพิมพ์ไม่ได้จากสถานะ ${exam.status}` });
+        return;
+      }
 
-      if (!Number.isInteger(copies) || copies < 1) {
-        res.status(400).json({ success: false, message: 'จำนวนชุดที่พิมพ์ต้องเป็นจำนวนเต็มอย่างน้อย 1 ชุด' });
+      const copies = Number(printed_copies || exam.numCopies);
+      if (!Number.isInteger(copies) || copies < 1 || copies > 100000) {
+        res.status(400).json({ success: false, message: 'จำนวนชุดที่พิมพ์ไม่ถูกต้อง' });
         return;
       }
 
       const previousStatus = exam.status;
       const newStatus = mark_completed ? ExamStatus.PRINTED : ExamStatus.PRINTING;
-
-      if (!canTransitionExamStatus(previousStatus, newStatus)) {
-        res.status(409).json({ success: false, message: transitionErrorMessage(previousStatus, newStatus) });
-        return;
-      }
-
-      // Insert print record
-      await prisma.printRecord.create({
-        data: {
-          examId,
-          printedById: user.id,
-          printedCopies: copies,
-          paperType: paper_type || 'A4 80gsm',
-          notes: notes || null,
-        },
-      });
-
-      await prisma.exam.update({
-        where: { id: examId },
-        data: { status: newStatus },
-      });
-
-      await prisma.examStatusHistory.create({
-        data: {
-          examId,
-          fromStatus: previousStatus,
-          toStatus: newStatus,
-          actionById: user.id,
-          actionName: user.full_name,
-          note: `จัดพิมพ์จำนวน ${copies} ชุด (${paper_type || 'A4 80gsm'}) ${mark_completed ? '[พิมพ์เสร็จสมบูรณ์]' : '[กำลังจัดพิมพ์]'}`,
-        },
-      });
+      await prisma.$transaction([
+        prisma.printRecord.create({
+          data: {
+            examId,
+            printedById: user.id,
+            printedCopies: copies,
+            paperType: String(paper_type || 'A4 80gsm').slice(0, 100),
+            notes: notes ? String(notes).slice(0, 1000) : null,
+          },
+        }),
+        prisma.exam.update({ where: { id: examId }, data: { status: newStatus } }),
+        prisma.examStatusHistory.create({
+          data: {
+            examId,
+            fromStatus: previousStatus,
+            toStatus: newStatus,
+            actionById: user.id,
+            actionName: user.full_name,
+            note: `จัดพิมพ์จำนวน ${copies} ชุด (${paper_type || 'A4 80gsm'}) ${mark_completed ? '[พิมพ์เสร็จสมบูรณ์]' : '[กำลังจัดพิมพ์]'}`,
+          },
+        }),
+      ]);
 
       broadcastEvent('EXAM_STATUS_CHANGED', { examId, fromStatus: previousStatus, toStatus: newStatus });
 
@@ -277,8 +265,6 @@ router.post(
 );
 
 // 4. Generate & Download Envelope Label PDF (REQ-0010: เจ้าหน้าที่หน่วยโสต, ผู้ดูแลระบบ)
-// GET is intentionally side-effect free: viewing/downloading a document must not
-// create or update an EnvelopeLabel record.
 router.get(
   '/:id/envelope-label',
   authenticateToken,
@@ -306,7 +292,50 @@ router.get(
         return;
       }
 
-      const labelCode = `ENV-${exam.course.courseCode}-${exam.id}-${exam.course.academicYear || '2569'}`;
+      if (
+        exam.status !== ExamStatus.PRINTED &&
+        exam.status !== ExamStatus.PACKED &&
+        exam.status !== ExamStatus.READY_FOR_PICKUP &&
+        exam.status !== ExamStatus.DELIVERED
+      ) {
+        res.status(409).json({ success: false, message: `สร้างใบปะหน้าไม่ได้จากสถานะ ${exam.status}` });
+        return;
+      }
+
+      const labelCode = `ENV-${exam.course.courseCode}-${exam.id}`;
+      const labelSnapshot = {
+        examId: exam.id,
+        courseCode: exam.course.courseCode,
+        courseName: exam.course.courseName,
+        instructorName: exam.course.instructor?.fullName || null,
+        instructorPhone: exam.course.instructor?.phone || null,
+        officeRoom: exam.course.instructor?.officeRoom || null,
+        examDate: exam.schedule?.examDate || null,
+        startTime: exam.schedule?.startTime || null,
+        endTime: exam.schedule?.endTime || null,
+        room: exam.schedule?.room || null,
+        section: exam.section || exam.schedule?.section || null,
+        studentCount: exam.studentCount,
+        reserveCopies: exam.reserveCopies,
+        numCopies: exam.numCopies,
+      };
+
+      // Save envelope label record
+      await prisma.envelopeLabel.upsert({
+        where: { examId },
+        update: {
+          labelCode,
+          generatedById: user.id,
+          generatedAt: new Date(),
+          detailsJson: JSON.stringify(labelSnapshot),
+        },
+        create: {
+          examId,
+          labelCode,
+          generatedById: user.id,
+          detailsJson: JSON.stringify(labelSnapshot),
+        },
+      });
 
       const pdfBuffer = await generateEnvelopeLabelPdf({
         examId,
@@ -314,6 +343,9 @@ router.get(
         courseCode: exam.course.courseCode,
         courseName: exam.course.courseName,
         instructorName: exam.course.instructor?.fullName || 'ไม่ระบุอาจารย์',
+        instructorPhone: exam.course.instructor?.phone || undefined,
+        officeRoom: exam.course.instructor?.officeRoom || undefined,
+        facultyName: exam.course.department || exam.course.instructor?.department || 'วิทยาศาสตร์',
         examType: exam.schedule?.examType === 'MIDTERM' ? 'สอบกลางภาค (Midterm)' : 'สอบไล่ปลายภาค (Final Exam)',
         examDate: exam.schedule?.examDate || 'ตามตารางสอบ',
         examTime:
@@ -321,10 +353,16 @@ router.get(
             ? `${exam.schedule.startTime} - ${exam.schedule.endTime}`
             : 'ตามตารางสอบ',
         room: exam.schedule?.room || 'ห้องสอบตามประกาศ',
+        section: exam.section || exam.schedule?.section || undefined,
+        studentCount: exam.studentCount,
+        reserveCopies: exam.reserveCopies,
         numCopies: exam.numCopies,
         numPages: exam.numPages || 1,
         paperSize: exam.paperSize || 'A4',
-        isDoubleSided: exam.isDoubleSided,
+        printFormat: exam.printFormat,
+        examLanguage: exam.examLanguage,
+        allowedMaterials: exam.allowedMaterials || undefined,
+        requiresAnswerSheet: exam.requiresAnswerSheet,
         specialInstructions: exam.specialInstructions || undefined,
         semester: exam.course.semester || 1,
         academicYear: exam.course.academicYear || '2569',
@@ -366,46 +404,40 @@ router.post(
         return;
       }
 
-      const envCount = Number(envelope_count || 1);
+      if (exam.status !== ExamStatus.PRINTED) {
+        res.status(409).json({ success: false, message: `บรรจุซองได้เฉพาะข้อสอบที่พิมพ์เสร็จแล้ว (ปัจจุบัน: ${exam.status})` });
+        return;
+      }
 
-      if (!Number.isInteger(envCount) || envCount < 1) {
-        res.status(400).json({ success: false, message: 'จำนวนซองต้องเป็นจำนวนเต็มอย่างน้อย 1 ซอง' });
+      const envCount = Number(envelope_count || 1);
+      if (!Number.isInteger(envCount) || envCount < 1 || envCount > 10000) {
+        res.status(400).json({ success: false, message: 'จำนวนซองไม่ถูกต้อง' });
         return;
       }
 
       const previousStatus = exam.status;
       const newStatus = ExamStatus.PACKED;
-
-      if (!canTransitionExamStatus(previousStatus, newStatus)) {
-        res.status(409).json({ success: false, message: transitionErrorMessage(previousStatus, newStatus) });
-        return;
-      }
-
-      // Insert packing record
-      await prisma.packingRecord.create({
-        data: {
-          examId,
-          packedById: user.id,
-          envelopeCount: envCount,
-          notes: notes || null,
-        },
-      });
-
-      await prisma.exam.update({
-        where: { id: examId },
-        data: { status: newStatus },
-      });
-
-      await prisma.examStatusHistory.create({
-        data: {
-          examId,
-          fromStatus: previousStatus,
-          toStatus: newStatus,
-          actionById: user.id,
-          actionName: user.full_name,
-          note: `บรรจุข้อสอบลงซองเรียบร้อย (${envCount} ซอง) ${notes ? `[${notes}]` : ''}`,
-        },
-      });
+      await prisma.$transaction([
+        prisma.packingRecord.create({
+          data: {
+            examId,
+            packedById: user.id,
+            envelopeCount: envCount,
+            notes: notes ? String(notes).slice(0, 1000) : null,
+          },
+        }),
+        prisma.exam.update({ where: { id: examId }, data: { status: newStatus } }),
+        prisma.examStatusHistory.create({
+          data: {
+            examId,
+            fromStatus: previousStatus,
+            toStatus: newStatus,
+            actionById: user.id,
+            actionName: user.full_name,
+            note: `บรรจุข้อสอบลงซองเรียบร้อย (${envCount} ซอง) ${notes ? `[${String(notes).slice(0, 500)}]` : ''}`,
+          },
+        }),
+      ]);
 
       broadcastEvent('EXAM_STATUS_CHANGED', { examId, fromStatus: previousStatus, toStatus: newStatus });
 

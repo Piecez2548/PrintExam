@@ -15,6 +15,7 @@ export enum ExamStatus {
   PACKED = 'PACKED',
   READY_FOR_PICKUP = 'READY_FOR_PICKUP',
   DELIVERED = 'DELIVERED',
+  CANCELLED = 'CANCELLED',
 }
 
 export const STATUS_LABELS_TH: Record<ExamStatus, string> = {
@@ -27,6 +28,7 @@ export const STATUS_LABELS_TH: Record<ExamStatus, string> = {
   [ExamStatus.PACKED]: 'บรรจุซองเรียบร้อย',
   [ExamStatus.READY_FOR_PICKUP]: 'พร้อมส่งมอบ',
   [ExamStatus.DELIVERED]: 'ส่งมอบแล้ว',
+  [ExamStatus.CANCELLED]: 'ยกเลิกรายการแล้ว',
 };
 
 export const ROLE_LABELS_TH: Record<UserRole, string> = {
@@ -44,7 +46,9 @@ export interface User {
   role: UserRole;
   department?: string;
   phone?: string;
+  office_room?: string;
   is_active: boolean;
+  must_change_password: boolean;
   created_at: string;
 }
 
@@ -57,7 +61,9 @@ export interface Course {
   instructor_email?: string;
   instructor_department?: string;
   department?: string;
+  section?: string;
   semester: number;
+  student_count?: number;
   academic_year: string;
   created_at: string;
 }
@@ -74,10 +80,14 @@ export interface ExamSchedule {
   start_time: string;
   end_time: string;
   room: string;
+  section?: string;
+  student_count?: number;
   coordinator_id?: number;
   coordinator_name?: string;
+  coordinator_phone?: string;
   deadline_date: string;
   status: 'SCHEDULED' | 'CONFIRMED' | 'CANCELLED';
+  submission_id?: number;
   created_at: string;
 }
 
@@ -136,6 +146,7 @@ export interface Exam {
   instructor_name?: string;
   instructor_email?: string;
   instructor_phone?: string;
+  instructor_office_room?: string;
   exam_date?: string;
   start_time?: string;
   end_time?: string;
@@ -146,8 +157,16 @@ export interface Exam {
   file_type?: string;
   file_size?: number;
   num_copies: number;
+  student_count?: number;
+  reserve_copies?: number;
   printed_copies?: number;
   num_pages: number;
+  exam_language?: string;
+  print_format?: string;
+  allowed_materials?: string;
+  requires_answer_sheet?: boolean;
+  exam_session_type?: string;
+  section?: string;
   special_instructions?: string;
   is_double_sided: number | boolean;
   paper_size: string;

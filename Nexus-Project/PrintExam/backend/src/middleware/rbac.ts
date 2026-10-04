@@ -20,11 +20,3 @@ export function requireRole(...allowedRoles: UserRole[]) {
     next();
   };
 }
-
-/**
- * Explicit alias for endpoints that accept more than one role.
- * Keeping this in one middleware module avoids ad-hoc role checks in routes.
- */
-export function requireAnyRole(...allowedRoles: UserRole[]) {
-  return requireRole(...allowedRoles);
-}

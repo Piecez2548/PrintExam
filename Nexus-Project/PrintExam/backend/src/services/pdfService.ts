@@ -1,5 +1,6 @@
+import fs from 'fs';
+import path from 'path';
 import PDFDocument from 'pdfkit';
-import { db } from '../config/database';
 
 export interface EnvelopeDetails {
   examId: number;
@@ -7,14 +8,23 @@ export interface EnvelopeDetails {
   courseCode: string;
   courseName: string;
   instructorName: string;
+  instructorPhone?: string;
+  officeRoom?: string;
+  facultyName?: string;
   examType: string;
   examDate: string;
   examTime: string;
   room: string;
+  section?: string;
+  studentCount: number;
+  reserveCopies: number;
   numCopies: number;
   numPages: number;
   paperSize: string;
-  isDoubleSided: boolean;
+  printFormat: string;
+  examLanguage: string;
+  allowedMaterials?: string;
+  requiresAnswerSheet: boolean;
   specialInstructions?: string;
   semester: number;
   academicYear: string;
@@ -22,140 +32,107 @@ export interface EnvelopeDetails {
   generatedAt: string;
 }
 
+const thaiFontCandidates = [
+  process.env.PDF_THAI_FONT_PATH,
+  path.join(__dirname, '../../assets/fonts/NotoSansThai.ttf'),
+  'C:/Windows/Fonts/LeelawUI.ttf',
+  '/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf',
+  '/usr/share/fonts/opentype/noto/NotoSansThai-Regular.otf',
+].filter(Boolean) as string[];
+
+const thaiFontPath = thaiFontCandidates.find((candidate) => fs.existsSync(candidate));
+const psuLogoPath = path.join(__dirname, '../../assets/images/psu-official-logo.png');
+
+function materialText(raw?: string): string {
+  if (!raw) return '-';
+  const labels: Record<string, string> = {
+    RULER: 'อนุญาตไม้บรรทัด',
+    BOOK: 'อนุญาตนำตำราเข้าห้องสอบ',
+    CALCULATOR: 'อนุญาตเครื่องคิดเลข',
+    NO_FORMULA_RULER: 'ไม่อนุญาตไม้บรรทัดสูตร',
+    NONE: 'ไม่มีอุปกรณ์เพิ่มเติม',
+  };
+  try {
+    const values = JSON.parse(raw) as string[];
+    return values.map((value) => value.startsWith('OTHER:') ? value.slice(6) : labels[value] || value).join(', ') || '-';
+  } catch {
+    return raw;
+  }
+}
+
 export function generateEnvelopeLabelPdf(details: EnvelopeDetails): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({
-        size: 'A4',
-        layout: 'landscape',
-        margin: 30,
-      });
-
+      const doc = new PDFDocument({ size: 'A4', layout: 'portrait', margin: 28 });
       const buffers: Buffer[] = [];
       doc.on('data', (chunk) => buffers.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
+      if (thaiFontPath) doc.registerFont('Thai', thaiFontPath);
+      const font = thaiFontPath ? 'Thai' : 'Helvetica';
+      const line = (x1: number, y: number, x2: number) => doc.moveTo(x1, y).lineTo(x2, y).lineWidth(0.45).dash(1.5, { space: 1.5 }).stroke('#334155').undash();
+      const value = (text: string, x: number, y: number, width: number, size = 10) => doc.font(font).fontSize(size).fillColor('#0f172a').text(text || '-', x, y, { width, height: 16, ellipsis: true });
+      const label = (text: string, x: number, y: number, width = 110) => doc.font(font).fontSize(9.5).fillColor('#0f172a').text(text, x, y, { width });
+      const rawDate = new Date(details.examDate);
+      const validDate = !Number.isNaN(rawDate.getTime());
+      const day = validDate ? String(rawDate.getDate()) : details.examDate;
+      const month = validDate ? rawDate.toLocaleDateString('th-TH', { month: 'long' }) : '-';
+      const buddhistYear = validDate ? String(rawDate.getFullYear() + 543) : details.academicYear;
+      const material = materialText(details.allowedMaterials);
 
-      // Border and Outer Frame (Official envelope label box)
-      doc.rect(20, 20, 802, 555).lineWidth(2).stroke('#1e293b');
-      doc.rect(24, 24, 794, 547).lineWidth(0.8).stroke('#64748b');
+      doc.rect(30, 20, 535, 800).lineWidth(1.1).stroke('#0f172a');
+      if (fs.existsSync(psuLogoPath)) doc.image(psuLogoPath, 280, 28, { fit: [36, 60], align: 'center', valign: 'center' });
+      doc.font(font).fillColor('#0f172a').fontSize(13).text('คณะวิทยาศาสตร์', 40, 88, { align: 'center', width: 515 });
+      doc.font(font).fontSize(12).text('มหาวิทยาลัยสงขลานครินทร์', 40, 108, { align: 'center', width: 515 });
 
-      // Header Banner
-      doc.rect(24, 24, 794, 70).fill('#0f172a');
-      doc.fillColor('#ffffff').fontSize(18).font('Helvetica-Bold')
-         .text('UNIVERSITY EXAMINATION CENTER - OFFICIAL ENVELOPE LABEL', 30, 38, { align: 'center', width: 782 });
-      doc.fontSize(14).font('Helvetica')
-         .text('ใบปะหน้าซองข้อสอบมาตรฐานประจำห้องสอบ', 30, 62, { align: 'center', width: 782 });
+      label('การสอบวิชา', 48, 140, 60); value(details.courseName, 108, 138, 300, 11); line(105, 157, 407);
+      label('รหัสวิชา', 420, 140, 55); value(details.courseCode, 474, 138, 73, 11); line(472, 157, 548);
+      label('สอบวันที่', 48, 168, 55); value(day, 102, 166, 43); line(99, 185, 145);
+      label('เดือน', 153, 168, 35); value(month, 188, 166, 100); line(186, 185, 286);
+      label('พ.ศ.', 296, 168, 32); value(buddhistYear, 328, 166, 55); line(326, 185, 382);
+      label('เวลา', 394, 168, 32); value(`${details.examTime} น.`, 426, 166, 122); line(424, 185, 548);
+      label('ห้องสอบ', 48, 196, 48); value(details.room, 96, 194, 190); line(94, 213, 286);
+      label('เลขประจำซอง', 300, 196, 72); value(details.labelCode, 372, 194, 176, 9); line(370, 213, 548);
+      label('จำนวนนักศึกษา', 48, 224, 85); value(String(details.studentCount), 132, 222, 52, 11); line(130, 241, 183); label('คน', 188, 224, 25);
+      label('นศ.คณะ', 48, 252, 50); value(details.facultyName || 'วิทยาศาสตร์', 98, 250, 132, 10); line(96, 269, 230);
+      label('ตอน', 242, 252, 28); value(details.section || '-', 270, 250, 50, 10); line(268, 269, 320);
+      label('ซองนี้มีข้อสอบ', 334, 252, 82); value(String(details.numCopies), 416, 250, 52, 11); line(414, 269, 467); label('ชุด', 474, 252, 25);
+      label('ข้อสอบสำรอง', 48, 280, 72); value(String(details.reserveCopies), 120, 278, 45, 11); line(118, 297, 164); label('ชุด', 170, 280, 25);
 
-      // Tracking Code & QR representation box
-      doc.rect(630, 105, 175, 80).lineWidth(1).stroke('#0284c7');
-      doc.fillColor('#0284c7').fontSize(9).font('Helvetica-Bold')
-         .text('SECURITY TRACKING CODE', 635, 112, { align: 'center', width: 165 });
-      doc.fillColor('#0f172a').fontSize(13).font('Helvetica-Bold')
-         .text(details.labelCode, 635, 128, { align: 'center', width: 165 });
-      doc.fontSize(8).font('Helvetica')
-         .text(`REF ID: EXAM-${details.examId}`, 635, 148, { align: 'center', width: 165 });
-      doc.text(`DATE: ${details.generatedAt.split('T')[0]}`, 635, 162, { align: 'center', width: 165 });
+      doc.font(font).fontSize(11).text('อุปกรณ์ที่ใช้หรือคำแนะนำผู้คุมสอบเพิ่มเติม', 48, 310, { align: 'center', width: 500 });
+      const option = (text: string, x: number, y: number, checked: boolean) => {
+        doc.font(font).fontSize(9).text(checked ? '( / )' : '(   )', x, y - 1, { width: 25 });
+        doc.font(font).fontSize(8.7).text(text, x + 28, y - 1, { width: 206 });
+      };
+      option('นำตำราเข้าห้องสอบได้', 60, 338, material.includes('ตำรา'));
+      option('นำเครื่องคิดเลขเข้าห้องสอบได้', 60, 361, material.includes('เครื่องคิดเลข'));
+      option('ห้ามนำไม้บรรทัดมีสูตรคณิตศาสตร์เข้าห้องสอบ', 60, 384, material.includes('ไม่อนุญาตไม้บรรทัดสูตร'));
+      option(details.specialInstructions || 'อื่น ๆ โปรดระบุ', 315, 338, Boolean(details.specialInstructions));
+      option('', 315, 361, false); line(346, 373, 538);
+      option('', 315, 384, false); line(346, 396, 538);
 
-      // Main Course Information Box
-      doc.fillColor('#0f172a');
-      let y = 110;
+      label('ผู้ออกข้อสอบ', 48, 411, 68); value(details.instructorName, 116, 409, 432, 10); line(114, 428, 548);
+      label('ห้องทำงาน', 48, 439, 58); value(details.officeRoom || '', 106, 437, 180, 10); line(104, 456, 286);
+      label('โทรศัพท์/มือถือ', 300, 439, 82); value(details.instructorPhone || '', 382, 437, 166, 10); line(380, 456, 548);
 
-      doc.fontSize(12).font('Helvetica-Bold').text('COURSE CODE / รหัสวิชา:', 40, y);
-      doc.fontSize(16).fillColor('#0369a1').text(details.courseCode, 210, y - 2);
+      doc.rect(42, 462, 511, 300).lineWidth(0.8).stroke('#0f172a');
+      label('จำนวนนักศึกษาที่เข้าสอบ', 52, 476, 125); line(177, 493, 232); label('คน', 236, 476, 25);
+      label('จำนวนนักศึกษาที่ขาดสอบ', 282, 476, 136); line(418, 493, 468); label('คน  คือ', 474, 476, 55);
+      doc.font(font).fontSize(9).text('รหัส', 70, 509, { width: 120, align: 'center' });
+      doc.font(font).fontSize(9).text('ชื่อ-สกุล', 215, 509, { width: 310, align: 'center' });
+      [535, 563, 591].forEach((y, index) => {
+        doc.font(font).fontSize(9).text(`${index + 1}.`, 57, y - 8);
+        line(72, y, 200); line(215, y, 535);
+      });
+      [1, 2, 3].forEach((number, index) => {
+        const y = 620 + index * 28;
+        doc.font(font).fontSize(9).text(`${number}.`, 185, y - 8, { width: 18, align: 'right' });
+        line(208, y, 455);
+        doc.font(font).fontSize(9).text('ผู้คุมสอบ', 465, y - 8, { width: 70 });
+      });
+      doc.font(font).fontSize(9).text('หมายเหตุ', 52, 714);
+      line(102, 726, 535); line(52, 747, 535);
 
-      y += 30;
-      doc.fontSize(11).fillColor('#0f172a').font('Helvetica-Bold').text('COURSE NAME / ชื่อวิชา:', 40, y);
-      doc.fontSize(12).font('Helvetica').text(details.courseName, 210, y);
-
-      y += 26;
-      doc.fontSize(11).font('Helvetica-Bold').text('INSTRUCTOR / อาจารย์ผู้สอน:', 40, y);
-      doc.fontSize(12).font('Helvetica').text(details.instructorName, 210, y);
-
-      y += 26;
-      doc.fontSize(11).font('Helvetica-Bold').text('TERM / ภาคการศึกษา:', 40, y);
-      doc.fontSize(12).font('Helvetica').text(`Semester ${details.semester} / Academic Year ${details.academicYear}`, 210, y);
-
-      // Dividing Line
-      y += 22;
-      doc.moveTo(35, y).lineTo(615, y).lineWidth(0.5).stroke('#cbd5e1');
-
-      // Schedule and Room Box
-      y += 15;
-      doc.rect(35, y, 580, 75).fillAndStroke('#f8fafc', '#94a3b8');
-      doc.fillColor('#0f172a');
-
-      doc.fontSize(11).font('Helvetica-Bold').text('EXAM TYPE:', 50, y + 10);
-      doc.fontSize(12).font('Helvetica').text(details.examType, 160, y + 10);
-
-      doc.fontSize(11).font('Helvetica-Bold').text('EXAM DATE:', 320, y + 10);
-      doc.fontSize(12).font('Helvetica').text(details.examDate, 420, y + 10);
-
-      doc.fontSize(11).font('Helvetica-Bold').text('TIME:', 50, y + 35);
-      doc.fontSize(12).font('Helvetica').text(details.examTime, 160, y + 35);
-
-      doc.fontSize(11).font('Helvetica-Bold').text('EXAM ROOM:', 320, y + 35);
-      doc.fontSize(12).fillColor('#b91c1c').font('Helvetica-Bold').text(details.room, 420, y + 35);
-
-      // Quantities & Printing Specs Box
-      y += 90;
-      doc.fillColor('#0f172a');
-      doc.rect(35, y, 770, 75).fillAndStroke('#f0fdf4', '#86efac');
-
-      doc.fontSize(11).fillColor('#14532d').font('Helvetica-Bold').text('PRINT SPECIFICATIONS & QUANTITY / รายละเอียดจำนวนการพิมพ์', 50, y + 8);
-
-      doc.fillColor('#0f172a');
-      doc.fontSize(11).font('Helvetica-Bold').text('COPIES / จำนวนชุด:', 50, y + 30);
-      doc.fontSize(16).fillColor('#15803d').font('Helvetica-Bold').text(`${details.numCopies} ชุด (Copies)`, 170, y + 26);
-
-      doc.fillColor('#0f172a');
-      doc.fontSize(11).font('Helvetica-Bold').text('PAGES / จำนวนหน้า:', 320, y + 30);
-      doc.fontSize(12).font('Helvetica').text(`${details.numPages} หน้า / ชุด`, 440, y + 30);
-
-      doc.fontSize(11).font('Helvetica-Bold').text('PRINT TYPE / รูปแบบ:', 570, y + 30);
-      doc.fontSize(12).font('Helvetica').text(`${details.isDoubleSided ? 'หน้า-หลัง (Double)' : 'หน้าเดียว (Single)'} [${details.paperSize}]`, 700, y + 30);
-
-      if (details.specialInstructions) {
-        doc.fontSize(10).font('Helvetica-Oblique').fillColor('#475569')
-           .text(`Special Notes: ${details.specialInstructions}`, 50, y + 55, { width: 740, lineBreak: false });
-      }
-
-      // Verification Checkboxes & Signatures Area
-      y += 90;
-      doc.rect(35, y, 770, 140).lineWidth(1).stroke('#94a3b8');
-
-      // Column 1: AV Staff Packing Sign-off
-      doc.rect(35, y, 256, 25).fill('#e2e8f0');
-      doc.fillColor('#0f172a').fontSize(10).font('Helvetica-Bold')
-         .text('1. AV STAFF / หน่วยโสตทัศนูปกรณ์', 40, y + 8);
-      doc.fontSize(9).font('Helvetica').fillColor('#334155')
-         .text('[ X ] ตรวจสอบจำนวนครบถ้วนสมบูรณ์', 45, y + 35)
-         .text('[ X ] บรรจุซองและปิดผนึกซีลเรียบร้อย', 45, y + 55)
-         .text(`ผู้พิมพ์/บรรจุ: ${details.generatedBy}`, 45, y + 80)
-         .text('ลงนาม: .................................................', 45, y + 105)
-         .text(`วันที่: ${details.generatedAt.split('T')[0]}`, 45, y + 122);
-
-      // Column 2: Handover / Dispatch
-      doc.rect(291, y, 256, 25).fill('#e2e8f0');
-      doc.fillColor('#0f172a').fontSize(10).font('Helvetica-Bold')
-         .text('2. DISPATCH / การส่งมอบข้อสอบ', 296, y + 8);
-      doc.fontSize(9).font('Helvetica').fillColor('#334155')
-         .text('[   ] ส่งมอบข้อสอบให้ฝ่ายดำเนินการสอบ', 300, y + 35)
-         .text('[   ] ซีลซองอยู่ในสภาพสมบูรณ์ ไม่มีการเปิด', 300, y + 55)
-         .text('ผู้ส่งมอบ: ...........................................', 300, y + 80)
-         .text('ลงนาม: .................................................', 300, y + 105)
-         .text('วันที่: ...... / ...... / ..........  เวลา: ..........', 300, y + 122);
-
-      // Column 3: Exam Coordinator Receiving Sign-off
-      doc.rect(547, y, 258, 25).fill('#e2e8f0');
-      doc.fillColor('#0f172a').fontSize(10).font('Helvetica-Bold')
-         .text('3. COORDINATOR / จนท.ดำเนินการสอบ', 552, y + 8);
-      doc.fontSize(9).font('Helvetica').fillColor('#334155')
-         .text('[   ] ได้รับซองข้อสอบครบถ้วนตามรายการ', 555, y + 35)
-         .text('[   ] ตรวจสอบรหัสวิชาและห้องสอบถูกต้อง', 555, y + 55)
-         .text('ผู้รับมอบ: ...........................................', 555, y + 80)
-         .text('ลงนาม: .................................................', 555, y + 105)
-         .text('วันที่: ...... / ...... / ..........  เวลา: ..........', 555, y + 122);
-
+      doc.font(font).fontSize(7.5).fillColor('#64748b').text(`EXAM-${details.examId} | ${details.generatedAt.replace('T', ' ').slice(0, 16)}`, 42, 790, { align: 'right', width: 506 });
       doc.end();
     } catch (error) {
       reject(error);

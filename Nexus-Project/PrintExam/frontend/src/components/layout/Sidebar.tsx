@@ -12,17 +12,39 @@ import {
   History,
   Bell,
   Sparkles,
+  UserRound,
+  BookOpen,
+  X,
 } from 'lucide-react';
+import { ROLE_LABELS_TH } from '../../types';
 
-export const Sidebar: React.FC = () => {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose = () => undefined }) => {
   const { user, isInstructor, isAvStaff, isCoordinator, isAdmin } = useAuth();
 
   const navItems = [
+    // Shared overview: same system-wide information for every role
+    {
+      to: '/reports',
+      label: 'สรุปภาพรวม',
+      icon: <BarChart3 className="w-4 h-4" />,
+      show: true,
+    },
     // Instructor Links
     {
       to: '/instructor/dashboard',
       label: 'แดชบอร์ดข้อสอบ',
       icon: <LayoutDashboard className="w-4 h-4" />,
+      show: isInstructor,
+    },
+    {
+      to: '/instructor/courses',
+      label: 'รายวิชาที่ฉันสอน',
+      icon: <BookOpen className="w-4 h-4" />,
       show: isInstructor,
     },
     {
@@ -62,12 +84,6 @@ export const Sidebar: React.FC = () => {
       show: isAdmin,
     },
     {
-      to: '/admin/reports',
-      label: 'สรุปภาพรวม & ค้นหา',
-      icon: <BarChart3 className="w-4 h-4" />,
-      show: true, // Everyone can view reports filtered by role
-    },
-    {
       to: '/admin/audit-log',
       label: 'ประวัติ Audit Log',
       icon: <History className="w-4 h-4" />,
@@ -75,6 +91,12 @@ export const Sidebar: React.FC = () => {
     },
 
     // Shared
+    {
+      to: '/profile',
+      label: 'โปรไฟล์ของฉัน',
+      icon: <UserRound className="w-4 h-4" />,
+      show: true,
+    },
     {
       to: '/notifications',
       label: 'การแจ้งเตือน',
@@ -84,13 +106,27 @@ export const Sidebar: React.FC = () => {
   ];
 
   return (
-    <aside className="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 min-h-[calc(100vh-4rem)]">
+    <>
+      {isOpen && (
+        <button
+          aria-label="ปิดเมนู"
+          className="fixed inset-0 top-16 z-40 bg-slate-950/45 backdrop-blur-[1px] lg:hidden"
+          onClick={onClose}
+        />
+      )}
+      <aside className={`fixed left-0 top-16 bottom-0 z-50 w-72 max-w-[86vw] bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:min-h-[calc(100vh-4rem)] lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <div className="flex items-center justify-between px-4 pt-4 lg:hidden">
+        <div className="font-extrabold text-slate-900 dark:text-white">เมนูระบบ</div>
+        <button aria-label="ปิดเมนู" onClick={onClose} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+          <X className="h-5 w-5" />
+        </button>
+      </div>
       {/* Role Notice Card */}
       <div className="p-4 border-b border-slate-100 dark:border-slate-800">
         <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200/70 dark:border-slate-700/60 text-xs">
           <div className="text-slate-500 dark:text-slate-400 font-medium">สิทธิ์การใช้งานปัจจุบัน:</div>
           <div className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">
-            {user?.role}
+            {user?.role ? ROLE_LABELS_TH[user.role] : '-'}
           </div>
           <div className="text-[11px] text-slate-400 mt-1 truncate">
             {user?.department || 'มหาวิทยาลัย'}
@@ -109,6 +145,7 @@ export const Sidebar: React.FC = () => {
             <NavLink
               key={item.to}
               to={item.to}
+              onClick={onClose}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                   isActive
@@ -128,6 +165,7 @@ export const Sidebar: React.FC = () => {
         <div>PrintExam Platform v1.0</div>
         <div className="text-[10px] text-slate-400">ระบบจัดการพิมพ์ข้อสอบ Online</div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 };

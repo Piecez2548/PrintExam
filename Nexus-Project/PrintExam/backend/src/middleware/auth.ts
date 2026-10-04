@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config/constants';
 import { prisma } from '../database/prisma';
 import { UserRole } from '../../generated/prisma';
+import { AUTH_COOKIE_NAME, readCookie } from '../services/authTokenService';
 
 export interface UserDTO {
   id: number;
@@ -12,7 +13,9 @@ export interface UserDTO {
   role: UserRole;
   department?: string | null;
   phone?: string | null;
+  office_room?: string | null;
   is_active: boolean;
+  must_change_password: boolean;
   created_at?: string;
 }
 
@@ -22,7 +25,8 @@ export interface AuthRequest extends Request {
 
 export async function authenticateToken(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const bearerToken = authHeader && authHeader.split(' ')[1];
+  const token = bearerToken || readCookie(req.headers.cookie, AUTH_COOKIE_NAME);
 
   if (!token) {
     res.status(401).json({ success: false, message: 'กรุณาเข้าสู่ระบบ (Authentication required)' });
@@ -30,7 +34,16 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { id: number; username: string };
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as {
+      id: number;
+      username: string;
+      pending2FA?: boolean;
+      sessionVersion?: number;
+    };
+    if (decoded.pending2FA) {
+      res.status(403).json({ success: false, message: 'กรุณายืนยัน OTP ให้เสร็จก่อนใช้งานระบบ' });
+      return;
+    }
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
       select: {
@@ -41,7 +54,10 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
         role: true,
         department: true,
         phone: true,
+        officeRoom: true,
         isActive: true,
+        mustChangePassword: true,
+        sessionVersion: true,
         createdAt: true,
       },
     });
@@ -56,6 +72,11 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
       return;
     }
 
+    if (decoded.sessionVersion !== user.sessionVersion) {
+      res.status(401).json({ success: false, message: 'เซสชันนี้ถูกยกเลิกแล้ว กรุณาเข้าสู่ระบบใหม่' });
+      return;
+    }
+
     req.user = {
       id: user.id,
       username: user.username,
@@ -64,9 +85,22 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
       role: user.role,
       department: user.department,
       phone: user.phone,
+      office_room: user.officeRoom,
       is_active: user.isActive,
+      must_change_password: user.mustChangePassword,
       created_at: user.createdAt.toISOString(),
     };
+
+    const allowedDuringPasswordChange = new Set(['/api/auth/me', '/api/auth/logout', '/api/users/me/profile']);
+    const requestPath = req.originalUrl.split('?')[0];
+    if (user.mustChangePassword && !allowedDuringPasswordChange.has(requestPath)) {
+      res.status(428).json({
+        success: false,
+        code: 'PASSWORD_CHANGE_REQUIRED',
+        message: 'กรุณาตั้งรหัสผ่านส่วนตัวในหน้าโปรไฟล์ก่อนใช้งานเมนูอื่น',
+      });
+      return;
+    }
 
     next();
   } catch (err) {

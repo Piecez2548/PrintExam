@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { UserRole, Prisma } from '../../generated/prisma';
 import { recordAuditLog } from '../middleware/audit';
+import { notifyRole } from '../services/notificationService';
 
 const router = Router();
 
@@ -18,7 +19,9 @@ function formatCourse(c: any) {
     instructor_email: c.instructor ? c.instructor.email : undefined,
     instructor_department: c.instructor ? c.instructor.department : undefined,
     department: c.department,
+    section: c.section,
     semester: c.semester,
+    student_count: c.studentCount,
     academic_year: c.academicYear,
     created_at: c.createdAt instanceof Date ? c.createdAt.toISOString() : c.createdAt,
     updated_at: c.updatedAt instanceof Date ? c.updatedAt.toISOString() : c.updatedAt,
@@ -26,11 +29,7 @@ function formatCourse(c: any) {
 }
 
 // Get all courses (public to all authenticated users)
-router.get(
-  '/',
-  authenticateToken,
-  requireRole(UserRole.INSTRUCTOR, UserRole.COORDINATOR, UserRole.ADMIN),
-  async (req: AuthRequest, res: Response): Promise<void> => {
+router.get('/', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   const { instructor_id, semester, academic_year, search } = req.query;
 
   try {
@@ -38,7 +37,7 @@ router.get(
 
     if (instructor_id) {
       where.instructorId = Number(instructor_id);
-    } else if (req.user?.role === UserRole.INSTRUCTOR && req.query.all !== 'true') {
+    } else if (req.user?.role === UserRole.INSTRUCTOR) {
       where.instructorId = req.user.id;
     }
 
@@ -65,6 +64,7 @@ router.get(
         instructor: true,
       },
       orderBy: { courseCode: 'asc' },
+      take: 500,
     });
 
     res.json({ success: true, data: courses.map(formatCourse) });
@@ -72,8 +72,7 @@ router.get(
     console.error('[Course List Error]', error);
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการดึงข้อมูลรายวิชา' });
   }
-  }
-);
+});
 
 // Create course (Instructor, Coordinator & Admin)
 router.post(
@@ -81,7 +80,7 @@ router.post(
   authenticateToken,
   requireRole(UserRole.INSTRUCTOR, UserRole.COORDINATOR, UserRole.ADMIN),
   async (req: AuthRequest, res: Response): Promise<void> => {
-    let { course_code, course_name, instructor_id, department, semester, academic_year } = req.body;
+    let { course_code, course_name, instructor_id, department, section, semester, student_count, academic_year } = req.body;
 
     if (req.user?.role === UserRole.INSTRUCTOR) {
       instructor_id = req.user.id;
@@ -92,25 +91,42 @@ router.post(
       return;
     }
 
+    const normalizedSemester = Number(semester || 1);
+    const normalizedStudentCount = Number(student_count || 1);
+    if (![1, 2, 3].includes(normalizedSemester)) {
+      res.status(400).json({ success: false, message: 'ภาคการศึกษาต้องเป็นภาค 1, ภาค 2 หรือซัมเมอร์' });
+      return;
+    }
+    if (!Number.isInteger(normalizedStudentCount) || normalizedStudentCount < 1) {
+      res.status(400).json({ success: false, message: 'จำนวนนักศึกษาต้องเป็นจำนวนเต็มอย่างน้อย 1 คน' });
+      return;
+    }
+
     try {
-      const normalizedCode = String(course_code).trim().toUpperCase();
-      const instructorId = Number(instructor_id);
-      const instructor = await prisma.user.findUnique({ where: { id: instructorId } });
-      if (!instructor || instructor.role !== UserRole.INSTRUCTOR || !instructor.isActive) {
-        res.status(400).json({ success: false, message: 'ต้องระบุอาจารย์ผู้สอนที่มีบัญชีและเปิดใช้งานอยู่' });
+      const instructor = await prisma.user.findFirst({
+        where: { id: Number(instructor_id), role: UserRole.INSTRUCTOR, isActive: true },
+        select: { id: true },
+      });
+      if (!instructor) {
+        res.status(400).json({ success: false, message: 'ไม่พบบัญชีอาจารย์ผู้สอนที่ใช้งานได้' });
         return;
       }
 
+      const normalizedCode = String(course_code).trim().toUpperCase();
+      const normalizedSection = String(section || '').trim();
+      const normalizedYear = String(academic_year || '2569').trim();
       const duplicate = await prisma.course.findFirst({
         where: {
           courseCode: normalizedCode,
-          instructorId,
-          semester: Number(semester || 1),
-          academicYear: String(academic_year || '2569'),
+          instructorId: Number(instructor_id),
+          section: normalizedSection || null,
+          semester: normalizedSemester,
+          academicYear: normalizedYear,
         },
+        select: { id: true },
       });
       if (duplicate) {
-        res.status(409).json({ success: false, message: 'รายวิชานี้มีอยู่แล้วสำหรับอาจารย์และภาคการศึกษานี้' });
+        res.status(409).json({ success: false, message: 'รายวิชา ตอน ภาค และปีการศึกษานี้มีอยู่แล้ว' });
         return;
       }
 
@@ -118,10 +134,12 @@ router.post(
         data: {
           courseCode: normalizedCode,
           courseName: String(course_name).trim(),
-          instructorId,
+          instructorId: Number(instructor_id),
           department: department || null,
-          semester: Number(semester || 1),
-          academicYear: academic_year || '2569',
+          section: normalizedSection || null,
+          semester: normalizedSemester,
+          studentCount: normalizedStudentCount,
+          academicYear: normalizedYear,
         },
         include: {
           instructor: true,
@@ -137,15 +155,33 @@ router.post(
         newCourse.id.toString(),
         req.ip || '127.0.0.1',
         {
-        course_code: normalizedCode,
-        course_name: String(course_name).trim(),
-        instructor_id: instructorId,
+          course_code,
+          course_name,
+          instructor_id,
+          section: normalizedSection || null,
+          semester: normalizedSemester,
+          academic_year: normalizedYear,
+          student_count: normalizedStudentCount,
         }
       );
+
+      if (req.user?.role === UserRole.INSTRUCTOR) {
+        await notifyRole(
+          UserRole.COORDINATOR,
+          'COURSE_WAITING_FOR_SCHEDULE',
+          `มีรายวิชาใหม่รอกำหนดตารางสอบ: ${normalizedCode}`,
+          `${newCourse.courseName}${normalizedSection ? ` ตอน ${normalizedSection}` : ''} โดย ${newCourse.instructor.fullName} กรุณากำหนดวัน เวลา ห้องสอบ และกำหนดส่งข้อสอบ`,
+          '/coordinator/courses'
+        );
+      }
 
       res.status(201).json({ success: true, message: 'เพิ่มรายวิชาสำเร็จ', data: formatCourse(newCourse) });
     } catch (error) {
       console.error('[Create Course Error]', error);
+      if ((error as { code?: string }).code === 'P2002') {
+        res.status(409).json({ success: false, message: 'รายวิชา ตอน ภาค และปีการศึกษานี้มีอยู่แล้ว' });
+        return;
+      }
       res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการสร้างรายวิชา' });
     }
   }
@@ -158,48 +194,39 @@ router.put(
   requireRole(UserRole.COORDINATOR, UserRole.ADMIN),
   async (req: AuthRequest, res: Response): Promise<void> => {
     const { id } = req.params;
-    const { course_code, course_name, instructor_id, department, semester, academic_year } = req.body;
+    const { course_code, course_name, instructor_id, department, section, semester, student_count, academic_year } = req.body;
     const courseId = Number(id);
 
+    if (semester !== undefined && ![1, 2, 3].includes(Number(semester))) {
+      res.status(400).json({ success: false, message: 'ภาคการศึกษาต้องเป็นภาค 1, ภาค 2 หรือซัมเมอร์' });
+      return;
+    }
+    if (student_count !== undefined && (!Number.isInteger(Number(student_count)) || Number(student_count) < 1)) {
+      res.status(400).json({ success: false, message: 'จำนวนนักศึกษาต้องเป็นจำนวนเต็มอย่างน้อย 1 คน' });
+      return;
+    }
+
     try {
-      const current = await prisma.course.findUnique({ where: { id: courseId } });
-      if (!current) {
-        res.status(404).json({ success: false, message: 'ไม่พบรายวิชาที่ระบุ' });
-        return;
+      if (instructor_id !== undefined) {
+        const instructor = await prisma.user.findFirst({
+          where: { id: Number(instructor_id), role: UserRole.INSTRUCTOR, isActive: true },
+          select: { id: true },
+        });
+        if (!instructor) {
+          res.status(400).json({ success: false, message: 'ผู้รับผิดชอบรายวิชาต้องเป็นบัญชีอาจารย์ที่เปิดใช้งานอยู่' });
+          return;
+        }
       }
-
-      const nextInstructorId = instructor_id !== undefined ? Number(instructor_id) : current.instructorId;
-      const instructor = await prisma.user.findUnique({ where: { id: nextInstructorId } });
-      if (!instructor || instructor.role !== UserRole.INSTRUCTOR || !instructor.isActive) {
-        res.status(400).json({ success: false, message: 'ต้องระบุอาจารย์ผู้สอนที่มีบัญชีและเปิดใช้งานอยู่' });
-        return;
-      }
-
-      const nextCode = course_code !== undefined ? String(course_code).trim().toUpperCase() : current.courseCode;
-      const nextSemester = semester !== undefined ? Number(semester) : current.semester;
-      const nextYear = academic_year !== undefined ? String(academic_year) : current.academicYear;
-      const duplicate = await prisma.course.findFirst({
-        where: {
-          courseCode: nextCode,
-          instructorId: nextInstructorId,
-          semester: nextSemester,
-          academicYear: nextYear,
-          NOT: { id: courseId },
-        },
-      });
-      if (duplicate) {
-        res.status(409).json({ success: false, message: 'รายวิชานี้มีอยู่แล้วสำหรับอาจารย์และภาคการศึกษานี้' });
-        return;
-      }
-
       const updated = await prisma.course.update({
         where: { id: courseId },
         data: {
           courseCode: course_code ? course_code.toUpperCase() : undefined,
           courseName: course_name !== undefined ? course_name : undefined,
-          instructorId: instructor_id !== undefined ? nextInstructorId : undefined,
+          instructorId: instructor_id !== undefined ? Number(instructor_id) : undefined,
           department: department !== undefined ? department : undefined,
+          section: section !== undefined ? String(section).trim() || null : undefined,
           semester: semester !== undefined ? Number(semester) : undefined,
+          studentCount: student_count !== undefined ? Number(student_count) : undefined,
           academicYear: academic_year !== undefined ? String(academic_year) : undefined,
         },
         include: {
@@ -244,6 +271,11 @@ router.delete(
 
       if (examsCount > 0) {
         res.status(400).json({ success: false, message: 'ไม่สามารถลบรายวิชานี้ได้ เนื่องจากมีข้อสอบที่ผูกอยู่ในระบบแล้ว' });
+        return;
+      }
+      const schedulesCount = await prisma.examSchedule.count({ where: { courseId } });
+      if (schedulesCount > 0) {
+        res.status(409).json({ success: false, message: 'ไม่สามารถลบรายวิชาที่เคยกำหนดตารางสอบแล้ว กรุณาเก็บไว้เป็นประวัติ' });
         return;
       }
 

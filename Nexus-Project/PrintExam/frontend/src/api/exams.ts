@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { API_BASE_URL, apiClient } from './client';
 import { Exam } from '../types';
 
 export const examsApi = {
@@ -58,14 +58,8 @@ export const examsApi = {
     return res.data;
   },
 
-  getExamFile: async (id: number | string): Promise<Blob> => {
-    const res = await apiClient.get(`/exams/${id}/file`, { responseType: 'blob' });
-    return res.data;
-  },
-
-  getEnvelopeLabel: async (id: number | string): Promise<Blob> => {
-    const res = await apiClient.get(`/exams/${id}/envelope-label`, { responseType: 'blob' });
-    return res.data;
+  getEnvelopeLabelUrl: (id: number | string): string => {
+    return `${API_BASE_URL}/exams/${id}/envelope-label`;
   },
 
   // Delivery (REQ-0012)

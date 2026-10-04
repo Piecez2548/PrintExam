@@ -6,7 +6,6 @@ import { recordAuditLog } from '../middleware/audit';
 import { broadcastEvent } from '../services/wsService';
 import { createNotification, notifyRole } from '../services/notificationService';
 import { ExamStatus, UserRole } from '../../generated/prisma';
-import { canTransitionExamStatus, transitionErrorMessage } from '../security/examStatus';
 
 const router = Router();
 
@@ -35,29 +34,29 @@ router.post(
         return;
       }
 
-      const previousStatus = exam.status;
-      const newStatus = ExamStatus.READY_FOR_PICKUP;
-
-      if (!canTransitionExamStatus(previousStatus, newStatus)) {
-        res.status(409).json({ success: false, message: transitionErrorMessage(previousStatus, newStatus) });
+      if (exam.status !== ExamStatus.PACKED) {
+        res.status(409).json({ success: false, message: `ตั้งสถานะพร้อมรับได้เฉพาะข้อสอบที่บรรจุซองแล้ว (ปัจจุบัน: ${exam.status})` });
         return;
       }
 
-      await prisma.exam.update({
-        where: { id: examId },
-        data: { status: newStatus },
-      });
+      const previousStatus = exam.status;
+      const newStatus = ExamStatus.READY_FOR_PICKUP;
 
-      await prisma.examStatusHistory.create({
-        data: {
-          examId,
-          fromStatus: previousStatus,
-          toStatus: newStatus,
-          actionById: user.id,
-          actionName: user.full_name,
-          note: `ข้อสอบพร้อมส่งมอบ ณ ${pickup_location || 'ศูนย์พิมพ์/หน่วยโสต'} ${notes ? `(${notes})` : ''}`,
-        },
-      });
+      const safePickupLocation = String(pickup_location || 'ศูนย์พิมพ์/หน่วยโสต').trim().slice(0, 200);
+      const safeNotes = notes ? String(notes).trim().slice(0, 1000) : '';
+      await prisma.$transaction([
+        prisma.exam.update({ where: { id: examId }, data: { status: newStatus } }),
+        prisma.examStatusHistory.create({
+          data: {
+            examId,
+            fromStatus: previousStatus,
+            toStatus: newStatus,
+            actionById: user.id,
+            actionName: user.full_name,
+            note: `ข้อสอบพร้อมส่งมอบ ณ ${safePickupLocation} ${safeNotes ? `(${safeNotes})` : ''}`,
+          },
+        }),
+      ]);
 
       // Notify Exam Coordinator (REQ-0012)
       if (exam.schedule?.coordinatorId) {
@@ -121,47 +120,61 @@ router.post(
         return;
       }
 
-      if (!canTransitionExamStatus(exam.status, ExamStatus.DELIVERED)) {
-        res.status(409).json({ success: false, message: transitionErrorMessage(exam.status, ExamStatus.DELIVERED) });
+      if (exam.status !== ExamStatus.READY_FOR_PICKUP) {
+        res.status(409).json({ success: false, message: `รับมอบได้เฉพาะข้อสอบที่พร้อมรับแล้ว (ปัจจุบัน: ${exam.status})` });
         return;
       }
 
-      const handoverId = handed_over_by_id ? Number(handed_over_by_id) : user.id;
-      const receiverId = received_by_id ? Number(received_by_id) : user.id;
-
-      if (!Number.isInteger(handoverId) || !Number.isInteger(receiverId)) {
-        res.status(400).json({ success: false, message: 'ข้อมูลผู้ส่งมอบหรือผู้รับมอบไม่ถูกต้อง' });
+      if (received_by_id && Number(received_by_id) !== user.id) {
+        res.status(403).json({ success: false, message: 'ผู้รับมอบต้องเป็นบัญชีที่กำลังเข้าสู่ระบบ' });
         return;
       }
 
-      // Insert delivery record
-      await prisma.deliveryRecord.create({
-        data: {
-          examId,
-          handedOverById: handoverId,
-          receivedById: receiverId,
-          receiverSignatureNote: receiver_signature_note || 'ลงนามรับมอบข้อสอบเรียบร้อย ซีลสมบูรณ์',
-        },
+      const latestPacking = await prisma.packingRecord.findFirst({
+        where: { examId },
+        orderBy: { packedAt: 'desc' },
       });
+      const handoverId = handed_over_by_id ? Number(handed_over_by_id) : latestPacking?.packedById;
+      if (!handoverId) {
+        res.status(400).json({ success: false, message: 'ไม่พบเจ้าหน้าที่ผู้ส่งมอบจากข้อมูลการบรรจุซอง' });
+        return;
+      }
+
+      const handoverUser = await prisma.user.findUnique({ where: { id: handoverId } });
+      if (
+        !handoverUser ||
+        !handoverUser.isActive ||
+        (handoverUser.role !== UserRole.AV_STAFF && handoverUser.role !== UserRole.ADMIN)
+      ) {
+        res.status(400).json({ success: false, message: 'ผู้ส่งมอบต้องเป็นเจ้าหน้าที่หน่วยโสตหรือผู้ดูแลระบบที่ยังใช้งานอยู่' });
+        return;
+      }
+      const receiverId = user.id;
 
       const previousStatus = exam.status;
       const newStatus = ExamStatus.DELIVERED;
-
-      await prisma.exam.update({
-        where: { id: examId },
-        data: { status: newStatus },
-      });
-
-      await prisma.examStatusHistory.create({
-        data: {
-          examId,
-          fromStatus: previousStatus,
-          toStatus: newStatus,
-          actionById: user.id,
-          actionName: user.full_name,
-          note: `ส่งมอบและรับมอบข้อสอบเรียบร้อย [${receiver_signature_note || 'ซีลสมบูรณ์'}]`,
-        },
-      });
+      const signatureNote = String(receiver_signature_note || 'ลงนามรับมอบข้อสอบเรียบร้อย ซีลสมบูรณ์').trim().slice(0, 1000);
+      await prisma.$transaction([
+        prisma.deliveryRecord.create({
+          data: {
+            examId,
+            handedOverById: handoverId,
+            receivedById: receiverId,
+            receiverSignatureNote: signatureNote,
+          },
+        }),
+        prisma.exam.update({ where: { id: examId }, data: { status: newStatus } }),
+        prisma.examStatusHistory.create({
+          data: {
+            examId,
+            fromStatus: previousStatus,
+            toStatus: newStatus,
+            actionById: user.id,
+            actionName: user.full_name,
+            note: `ส่งมอบและรับมอบข้อสอบเรียบร้อย [${signatureNote}]`,
+          },
+        }),
+      ]);
 
       // Notify instructor that exam has been delivered to exam center
       await createNotification(

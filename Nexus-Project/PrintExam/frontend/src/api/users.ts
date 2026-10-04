@@ -1,7 +1,21 @@
 import { apiClient } from './client';
 import { User, UserRole } from '../types';
 
+export interface PasswordResetRequestItem {
+  id: number;
+  user_id: number;
+  username: string;
+  full_name: string;
+  email: string;
+  role: UserRole;
+  requested_at: string;
+}
+
 export const usersApi = {
+  getPasswordResetRequests: async (): Promise<PasswordResetRequestItem[]> => {
+    const res = await apiClient.get('/users/password-reset-requests');
+    return res.data.data;
+  },
   getUsers: async (params?: { search?: string; role?: string; status?: string }): Promise<User[]> => {
     const res = await apiClient.get('/users', { params });
     return res.data.data;
@@ -24,6 +38,11 @@ export const usersApi = {
 
   changeRole: async (id: number | string, role: UserRole): Promise<{ success: boolean; message: string }> => {
     const res = await apiClient.patch(`/users/${id}/role`, { role });
+    return res.data;
+  },
+
+  resetPassword: async (id: number | string, newPassword: string, adminPassword: string): Promise<{ success: boolean; message: string }> => {
+    const res = await apiClient.patch(`/users/${id}/reset-password`, { new_password: newPassword, admin_password: adminPassword });
     return res.data;
   },
 

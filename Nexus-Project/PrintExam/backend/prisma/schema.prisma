@@ -18,10 +18,14 @@ model User {
   role                 UserRole
   department           String?
   phone                String?
+  officeRoom           String?             @map("office_room")
   isActive             Boolean             @default(true) @map("is_active")
+  mustChangePassword   Boolean             @default(false) @map("must_change_password")
   twoFactorSecret      String?             @map("two_factor_secret")
   twoFactorTempCode    String?             @map("two_factor_temp_code")
   twoFactorExpiresAt   DateTime?           @map("two_factor_expires_at")
+  twoFactorFailedAttempts Int               @default(0) @map("two_factor_failed_attempts")
+  sessionVersion       Int                 @default(0) @map("session_version")
   createdAt            DateTime            @default(now()) @map("created_at")
   updatedAt            DateTime            @default(now()) @updatedAt @map("updated_at")
   auditLogs            AuditLog[]          @relation("UserAuditLogs")
@@ -35,10 +39,26 @@ model User {
   notifications        Notification[]      @relation("UserNotifications")
   packedRecords        PackingRecord[]     @relation("PackedRecords")
   printedRecords       PrintRecord[]       @relation("PrintedRecords")
+  passwordResetRequests PasswordResetRequest[] @relation("PasswordResetTarget")
+  resolvedResetRequests PasswordResetRequest[] @relation("PasswordResetResolver")
 
   @@index([role])
   @@index([isActive])
   @@map("Login")
+}
+
+model PasswordResetRequest {
+  id           Int       @id @default(autoincrement())
+  userId       Int       @unique @map("user_id")
+  status       String    @default("PENDING")
+  requestedAt  DateTime  @default(now()) @map("requested_at")
+  resolvedAt   DateTime? @map("resolved_at")
+  resolvedById Int?      @map("resolved_by")
+  user         User      @relation("PasswordResetTarget", fields: [userId], references: [id])
+  resolvedBy   User?     @relation("PasswordResetResolver", fields: [resolvedById], references: [id])
+
+  @@index([status, requestedAt])
+  @@map("Password_Reset_Request")
 }
 
 model Course {
@@ -47,7 +67,9 @@ model Course {
   courseName    String         @map("course_name")
   instructorId  Int            @map("instructor_id")
   department    String?
+  section       String?
   semester      Int            @default(1)
+  studentCount  Int            @default(1) @map("student_count")
   academicYear  String         @default("2569") @map("academic_year")
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at")
@@ -68,6 +90,7 @@ model ExamSchedule {
   startTime     String         @map("start_time")
   endTime       String         @map("end_time")
   room          String
+  section       String?
   coordinatorId Int?           @map("coordinator_id")
   deadlineDate  String         @map("deadline_date")
   status        ScheduleStatus @default(SCHEDULED)
@@ -92,7 +115,15 @@ model Exam {
   fileType            String?             @map("file_type")
   fileSize            Int?                @default(0) @map("file_size")
   numCopies           Int                 @default(1) @map("num_copies")
+  studentCount        Int                 @default(1) @map("student_count")
+  reserveCopies       Int                 @default(2) @map("reserve_copies")
+  section             String?
   numPages            Int                 @default(1) @map("num_pages")
+  examLanguage        String              @default("THAI") @map("exam_language")
+  printFormat         String              @default("DOUBLE_SIDED") @map("print_format")
+  allowedMaterials    String?             @map("allowed_materials")
+  requiresAnswerSheet Boolean             @default(false) @map("requires_answer_sheet")
+  examSessionType     String              @default("IN_SCHEDULE") @map("exam_session_type")
   specialInstructions String?             @map("special_instructions")
   isDoubleSided       Boolean             @default(true) @map("is_double_sided")
   paperSize           String              @default("A4") @map("paper_size")
@@ -140,7 +171,7 @@ model ExamStatusHistory {
 
 model EnvelopeLabel {
   id            Int      @id @default(autoincrement())
-  examId        Int      @map("exam_id")
+  examId        Int      @unique @map("exam_id")
   labelCode     String   @unique @map("label_code")
   generatedById Int      @map("generated_by")
   generatedAt   DateTime @default(now()) @map("generated_at")
@@ -253,6 +284,7 @@ enum ExamStatus {
   PACKED
   READY_FOR_PICKUP
   DELIVERED
+  CANCELLED
 }
 
 enum ExamType {
