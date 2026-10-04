@@ -9,12 +9,22 @@ export interface OtpDeliveryResult {
   channel: 'console' | 'demo-log' | 'resend';
 }
 
+function getDeliveryMode(env: NodeJS.ProcessEnv): string {
+  if (env.OTP_DELIVERY_MODE) return env.OTP_DELIVERY_MODE;
+  if (env.NODE_ENV === 'production') {
+    // Compatibility with the previous production configuration. This is a
+    // demo-only fallback and remains opt-in through the legacy private flag.
+    return env.ENABLE_PRIVATE_DEMO_OTP_LOG === 'true' ? 'demo-log' : 'resend';
+  }
+  return 'console';
+}
+
 /**
  * Deliver OTP without ever returning it to the browser. Development defaults
  * to the terminal; production requires an explicitly configured provider.
  */
 export async function deliverOtp(input: OtpDeliveryInput): Promise<OtpDeliveryResult> {
-  const mode = String(process.env.OTP_DELIVERY_MODE || (process.env.NODE_ENV === 'production' ? 'resend' : 'console'));
+  const mode = getDeliveryMode(process.env);
 
   if (mode === 'console') {
     if (process.env.NODE_ENV === 'production') {
@@ -25,12 +35,15 @@ export async function deliverOtp(input: OtpDeliveryInput): Promise<OtpDeliveryRe
   }
 
   if (mode === 'demo-log') {
-    if (process.env.ENABLE_DEMO_OTP_LOGGING !== 'true') {
-      throw new Error('ENABLE_DEMO_OTP_LOGGING=true is required for demo-log OTP delivery');
+    const newDemoOptIn = process.env.ENABLE_DEMO_OTP_LOGGING === 'true';
+    const legacyProductionOptIn = process.env.NODE_ENV === 'production'
+      && process.env.ENABLE_PRIVATE_DEMO_OTP_LOG === 'true';
+    if (!newDemoOptIn && !legacyProductionOptIn) {
+      throw new Error('An explicit demo OTP logging flag is required for demo-log OTP delivery');
     }
     console.warn(JSON.stringify({
       type: 'demo_otp',
-      warning: 'DEMO ONLY - OTP is visible to Render dashboard members',
+      warning: 'DEMO ONLY - OTP is visible to backend log viewers',
       recipient: input.email,
       otp: input.otpCode,
       expiresInMinutes: input.expiresMinutes,
