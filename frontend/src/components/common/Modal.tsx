@@ -42,7 +42,7 @@ export const Modal: React.FC<ModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <div data-testid="modal-overlay" className="fixed inset-0 z-50 overflow-y-auto overscroll-contain">
       <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-6">
         {/* Backdrop */}
         <div
@@ -52,10 +52,13 @@ export const Modal: React.FC<ModalProps> = ({
 
         {/* Modal panel */}
         <div
-          className={`relative flex max-h-[calc(100dvh-2rem)] w-full flex-col transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all dark:bg-slate-900 sm:max-h-[calc(100dvh-3rem)] ${maxWidthClasses[maxWidth]} border border-slate-200 dark:border-slate-800 z-10`}
+          role="dialog"
+          aria-modal="true"
+          data-testid="modal-panel"
+          className={`relative flex h-[calc(100dvh-2rem)] max-h-[calc(100dvh-2rem)] w-full min-h-0 flex-col transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all dark:bg-slate-900 sm:h-[calc(100dvh-3rem)] sm:max-h-[calc(100dvh-3rem)] ${maxWidthClasses[maxWidth]} border border-slate-200 dark:border-slate-800 z-10`}
         >
           {/* Header */}
-          <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
+          <div data-testid="modal-header" className="flex shrink-0 items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
             <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">{title}</h3>
             <button
               onClick={onClose}
@@ -66,7 +69,7 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
 
           {/* Body */}
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">{children}</div>
+          <div data-testid="modal-body" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">{children}</div>
         </div>
       </div>
     </div>

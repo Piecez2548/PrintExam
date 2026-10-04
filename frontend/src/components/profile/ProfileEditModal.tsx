@@ -81,7 +81,7 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({ user, isOpen
 
         {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">{error}</div>}
 
-        <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+        <div data-testid="profile-edit-actions" className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
           <button type="button" onClick={onClose} className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">ยกเลิก</button>
           <button type="submit" disabled={isSubmitting} className="rounded-xl bg-brand-600 px-5 py-2 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-50">{isSubmitting ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}</button>
         </div>
