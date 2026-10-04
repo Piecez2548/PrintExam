@@ -1,4 +1,4 @@
-import React, { ReactNode, useEffect } from 'react';
+import React, { ReactNode, useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -16,17 +16,40 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   maxWidth = 'lg',
 }) => {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+      if (e.key === 'Tab' && panelRef.current) {
+        const focusable = Array.from(
+          panelRef.current.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+        ).filter((element) => !element.hasAttribute('disabled'));
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
     if (isOpen) {
       document.body.style.overflow = 'hidden';
       window.addEventListener('keydown', handleKeyDown);
+      requestAnimationFrame(() => {
+        panelRef.current?.querySelector<HTMLElement>('input, select, textarea, button, [tabindex]:not([tabindex="-1"])')?.focus();
+      });
     }
     return () => {
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
+      previousFocus?.focus();
     };
   }, [isOpen, onClose]);
 
@@ -48,17 +71,24 @@ export const Modal: React.FC<ModalProps> = ({
         <div
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
           onClick={onClose}
+          aria-hidden="true"
         />
 
         {/* Modal panel */}
         <div
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
           className={`relative transform overflow-hidden rounded-2xl bg-white dark:bg-slate-900 text-left shadow-2xl transition-all sm:my-8 w-full ${maxWidthClasses[maxWidth]} border border-slate-200 dark:border-slate-800 z-10`}
         >
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
-            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">{title}</h3>
+            <h3 id={titleId} className="text-lg font-bold text-slate-900 dark:text-slate-100">{title}</h3>
             <button
+              type="button"
               onClick={onClose}
+              aria-label="ปิดหน้าต่าง"
               className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg transition-colors"
             >
               <X className="w-5 h-5" />

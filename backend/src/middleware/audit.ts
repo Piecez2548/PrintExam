@@ -2,6 +2,37 @@ import { Response, NextFunction } from 'express';
 import { prisma } from '../database/prisma';
 import { AuthRequest } from './auth';
 
+const SENSITIVE_KEYS = new Set([
+  'password',
+  'passwordhash',
+  'token',
+  'temptoken',
+  'otp',
+  'otpcode',
+  'authorization',
+  'secret',
+  'twofactortempcode',
+  'identifier',
+  'new_password',
+  'current_password',
+  'confirm_password',
+  'password_confirmation',
+]);
+const SENSITIVE_KEY_PATTERN = /(password|token|secret|otp|authorization)/i;
+
+/** Recursively redact credentials before request data is persisted in the audit trail. */
+function redactSensitive(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactSensitive);
+  if (!value || typeof value !== 'object') return value;
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+      key,
+      SENSITIVE_KEYS.has(key.toLowerCase()) || SENSITIVE_KEY_PATTERN.test(key) ? '[REDACTED]' : redactSensitive(item),
+    ])
+  );
+}
+
 export async function recordAuditLog(
   userId: number | null,
   userName: string | null,
@@ -59,7 +90,7 @@ export function auditMiddleware(req: AuthRequest, res: Response, next: NextFunct
           {
             path: req.originalUrl,
             params: req.params,
-            body: req.body ? { ...req.body, password: req.body.password ? '***' : undefined } : null,
+            body: req.body ? redactSensitive(req.body) : null,
             responseSummary: body?.message || 'Success',
           }
         ).catch((err) => console.error('[AuditLog] Middleware async recording error:', err));

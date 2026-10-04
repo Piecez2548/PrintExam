@@ -11,14 +11,7 @@ export async function seedDatabase(): Promise<void> {
     }
 
     console.log('[Seeder] Seeding initial database records into PostgreSQL (Supabase)...');
-    const seedDefaultPassword = process.env.SEED_DEFAULT_PASSWORD;
-    if (!seedDefaultPassword) {
-      throw new Error('SEED_DEFAULT_PASSWORD is required to seed an empty development database');
-    }
-    if (seedDefaultPassword.length < 8) {
-      throw new Error('SEED_DEFAULT_PASSWORD must be at least 8 characters long');
-    }
-    const passwordHash = bcrypt.hashSync(seedDefaultPassword, 10);
+    const passwordHash = bcrypt.hashSync('Demo!Password2569', 12);
 
     // 1. Seed Users
     const admin = await prisma.user.create({
@@ -36,7 +29,7 @@ export async function seedDatabase(): Promise<void> {
 
     const instructor1 = await prisma.user.create({
       data: {
-        username: 'instructor',
+        username: 'instructor1',
         passwordHash,
         fullName: 'รศ.ดร.สมชาย ใจดี (Assoc. Prof. Dr. Somchai)',
         email: 'somchai.j@university.ac.th',

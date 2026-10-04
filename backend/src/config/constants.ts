@@ -12,6 +12,7 @@ export const STATUS_LABELS_TH: Record<ExamStatus, string> = {
   [ExamStatus.PACKED]: 'บรรจุซองเรียบร้อย',
   [ExamStatus.READY_FOR_PICKUP]: 'พร้อมส่งมอบ',
   [ExamStatus.DELIVERED]: 'ส่งมอบแล้ว',
+  [ExamStatus.CANCELLED]: 'ยกเลิกรายการแล้ว',
 };
 
 export const ROLE_LABELS_TH: Record<UserRole, string> = {

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { UserRole } from '../../types';
+import { authApi } from '../../api/auth';
+import { Modal } from '../../components/common/Modal';
 import {
   Printer,
   Lock,
@@ -10,22 +11,10 @@ import {
   KeyRound,
   Clock,
   ShieldCheck,
+  Eye,
+  EyeOff,
+  CircleHelp,
 } from 'lucide-react';
-
-/** คืน path หน้าแรกตามบทบาทหลังยืนยันตัวตนสำเร็จ */
-const getDashboardPath = (role?: UserRole): string => {
-  switch (role) {
-    case UserRole.INSTRUCTOR:
-      return '/instructor/dashboard';
-    case UserRole.AV_STAFF:
-      return '/av-staff/queue';
-    case UserRole.COORDINATOR:
-      return '/coordinator/courses';
-    case UserRole.ADMIN:
-    default:
-      return '/admin/reports';
-  }
-};
 
 /** แปลงจำนวนวินาทีเป็นรูปแบบ MM:SS สำหรับตัวนับถอยหลัง OTP */
 const formatTimer = (seconds: number): string => {
@@ -35,14 +24,41 @@ const formatTimer = (seconds: number): string => {
 };
 
 export const LoginPage: React.FC = () => {
-  const { login, verify2FA, isAuthenticated, user } = useAuth();
+  const { login, verify2FA, isAuthenticated } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
 
   // Step 1 State
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
+  const [forgotIdentifier, setForgotIdentifier] = useState('');
+  const [isSendingHelpRequest, setIsSendingHelpRequest] = useState(false);
+  const focusFrameRef = useRef<number | null>(null);
+  const focusTimerRef = useRef<number | null>(null);
+
+  const cancelPendingFocusRetention = () => {
+    if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current);
+    if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current);
+    focusFrameRef.current = null;
+    focusTimerRef.current = null;
+  };
+
+  const retainTypingFocus = (input: HTMLInputElement) => {
+    cancelPendingFocusRetention();
+    focusFrameRef.current = window.requestAnimationFrame(() => {
+      input.focus({ preventScroll: true });
+      focusFrameRef.current = null;
+    });
+    focusTimerRef.current = window.setTimeout(() => {
+      input.focus({ preventScroll: true });
+      focusTimerRef.current = null;
+    }, 75);
+  };
+
+  useEffect(() => cancelPendingFocusRetention, []);
 
   // Step 2 (2FA) State
   const [requires2FA, setRequires2FA] = useState(false);
@@ -51,13 +67,31 @@ export const LoginPage: React.FC = () => {
   const [deliveryHint, setDeliveryHint] = useState('ช่องทางที่ลงทะเบียนไว้');
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [timeLeftSeconds, setTimeLeftSeconds] = useState(180); // 3 minutes countdown (NFR-5)
-  const [tempUser, setTempUser] = useState<{ full_name: string } | null>(null);
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate(getDashboardPath(user?.role));
+      navigate('/reports');
     }
-  }, [isAuthenticated, user, navigate]);
+  }, [isAuthenticated, navigate]);
+
+  const handleForgotPassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!forgotIdentifier.trim()) {
+      toast.warning('กรุณากรอกชื่อผู้ใช้หรืออีเมล');
+      return;
+    }
+    try {
+      setIsSendingHelpRequest(true);
+      const result = await authApi.requestPasswordReset(forgotIdentifier.trim());
+      toast.success('ส่งคำขอแล้ว', result.message);
+      setIsForgotModalOpen(false);
+      setForgotIdentifier('');
+    } catch (error: any) {
+      toast.error('ส่งคำขอไม่สำเร็จ', error.response?.data?.message || 'กรุณาติดต่อผู้ดูแลระบบโดยตรง');
+    } finally {
+      setIsSendingHelpRequest(false);
+    }
+  };
 
   // 3-minute Countdown Timer (REQ-0001, NFR-5)
   useEffect(() => {
@@ -94,8 +128,6 @@ export const LoginPage: React.FC = () => {
         setDeliveryHint(res.deliveryHint);
         setOtpCode('');
         setExpiresAt(new Date(res.expiresAt));
-        // The password step intentionally does not return user data before OTP.
-        setTempUser({ full_name: username });
         toast.info('ส่งรหัส OTP แล้ว', `ส่งไปยัง ${res.deliveryHint} กรุณากรอกภายใน 3 นาที`);
       }
     } catch (err: any) {
@@ -147,7 +179,7 @@ export const LoginPage: React.FC = () => {
         <div className="bg-slate-900/80 backdrop-blur-xl py-8 px-6 sm:px-10 shadow-2xl rounded-3xl border border-slate-700/60">
           {!requires2FA ? (
             /* STEP 1: Username & Password (REQ-0001) */
-            <form onSubmit={handlePasswordSubmit} className="space-y-5">
+            <form onSubmit={handlePasswordSubmit} autoComplete="off" className="space-y-5">
               <div className="border-b border-slate-800 pb-3">
                 <h3 className="text-base font-bold text-slate-200 flex items-center gap-2">
                   <KeyRound className="w-4 h-4 text-brand-400" />
@@ -156,7 +188,7 @@ export const LoginPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                <label htmlFor="login-username" className="block text-xs font-semibold text-slate-300 mb-1.5">
                   ชื่อผู้ใช้ (Username)
                 </label>
                 <div className="relative">
@@ -164,9 +196,22 @@ export const LoginPage: React.FC = () => {
                     <UserIcon className="w-4 h-4" />
                   </div>
                   <input
+                    id="login-username"
+                    name="username"
                     type="text"
+                    autoComplete="off"
+                    data-1p-ignore="true"
+                    data-lpignore="true"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    onChange={(e) => {
+                      const input = e.currentTarget;
+                      setUsername(input.value);
+                      retainTypingFocus(input);
+                    }}
+                    onPointerDown={cancelPendingFocusRetention}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Tab' || e.key === 'Enter') cancelPendingFocusRetention();
+                    }}
                     required
                     placeholder="กรอกชื่อผู้ใช้ (Username)"
                     className="block w-full pl-10 pr-3 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-hidden focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all"
@@ -175,7 +220,7 @@ export const LoginPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                <label htmlFor="login-password" className="block text-xs font-semibold text-slate-300 mb-1.5">
                   รหัสผ่าน (Password)
                 </label>
                 <div className="relative">
@@ -183,14 +228,47 @@ export const LoginPage: React.FC = () => {
                     <Lock className="w-4 h-4" />
                   </div>
                   <input
-                    type="password"
+                    id="login-password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    data-1p-ignore="true"
+                    data-lpignore="true"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      const input = e.currentTarget;
+                      setPassword(input.value);
+                      retainTypingFocus(input);
+                    }}
+                    onPointerDown={cancelPendingFocusRetention}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Tab' || e.key === 'Enter') cancelPendingFocusRetention();
+                    }}
                     required
                     placeholder="••••••••"
-                    className="block w-full pl-10 pr-3 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-hidden focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all"
+                    className="block w-full pl-10 pr-11 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-hidden focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all"
                   />
+                  <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'} className="absolute inset-y-0 right-0 flex items-center px-3.5 text-slate-400 hover:text-white">
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
+                <div className="mt-2 text-right">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotIdentifier(username);
+                      setIsForgotModalOpen(true);
+                    }}
+                    className="text-xs font-semibold text-brand-300 transition-colors hover:text-brand-200 hover:underline"
+                  >
+                    ลืมรหัสผ่าน?
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 rounded-xl border border-slate-700 bg-slate-800/50 p-3 text-xs leading-relaxed text-slate-400">
+                <CircleHelp className="mt-0.5 h-4 w-4 shrink-0 text-brand-400" />
+                <span>หลังตรวจสอบรหัสผ่าน ระบบจะส่ง OTP ไปยังช่องทางที่ลงทะเบียนไว้ หากเข้าใช้งานครั้งแรกให้เปลี่ยนข้อมูลบัญชีในหน้าโปรไฟล์</span>
               </div>
 
               <button
@@ -212,7 +290,7 @@ export const LoginPage: React.FC = () => {
                   การยืนยันตัวตนแบบ 2 ขั้นตอน (2FA)
                 </h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  สำหรับผู้ใช้: <strong className="text-brand-300">{tempUser?.full_name}</strong>
+                  สำหรับผู้ใช้: <strong className="text-brand-300">{username}</strong>
                 </p>
               </div>
 
@@ -237,11 +315,15 @@ export const LoginPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                <label htmlFor="login-otp" className="block text-xs font-semibold text-slate-300 mb-1.5">
                   กรอกรหัสยืนยัน 6 หลัก (OTP / TOTP)
                 </label>
                 <input
+                  id="login-otp"
+                  name="otp"
                   type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
                   maxLength={6}
                   value={otpCode}
                   onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
@@ -270,6 +352,39 @@ export const LoginPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      <Modal
+        isOpen={isForgotModalOpen}
+        onClose={() => setIsForgotModalOpen(false)}
+        title="ขอความช่วยเหลือกรณีลืมรหัสผ่าน"
+        maxWidth="md"
+      >
+        <form onSubmit={handleForgotPassword} className="space-y-4 text-sm">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200">
+            ระบบจะส่งคำขอไปยังผู้ดูแลระบบ กรุณาติดต่อผู้ดูแลเพื่อยืนยันตัวตนและรับรหัสผ่านชั่วคราว เช่นเดียวกับการติดต่อศูนย์คอมพิวเตอร์ของมหาวิทยาลัย
+          </div>
+          <label htmlFor="forgot-identifier" className="block font-semibold text-slate-700 dark:text-slate-200">
+            ชื่อผู้ใช้หรืออีเมล
+            <input
+              id="forgot-identifier"
+              name="identifier"
+              value={forgotIdentifier}
+              onChange={(event) => setForgotIdentifier(event.target.value)}
+              autoComplete="username"
+              required
+              placeholder="Username หรืออีเมลที่ลงทะเบียน"
+              className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200 dark:border-slate-700 dark:bg-slate-900"
+            />
+          </label>
+          <p className="text-xs text-slate-500">เพื่อความปลอดภัย ระบบจะไม่แจ้งว่าบัญชีดังกล่าวมีอยู่หรือไม่</p>
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+            <button type="button" onClick={() => setIsForgotModalOpen(false)} className="rounded-xl bg-slate-100 px-4 py-2 font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">ยกเลิก</button>
+            <button disabled={isSendingHelpRequest} className="rounded-xl bg-brand-600 px-5 py-2 font-bold text-white hover:bg-brand-700 disabled:opacity-50">
+              {isSendingHelpRequest ? 'กำลังส่งคำขอ...' : 'ส่งคำขอถึงผู้ดูแลระบบ'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

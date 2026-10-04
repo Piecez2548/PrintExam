@@ -13,13 +13,17 @@ export interface LoginResponse {
 export interface Verify2FAResponse {
   success: boolean;
   message: string;
-  token: string;
   user: User;
 }
 
 export const authApi = {
   login: async (username: string, password: string): Promise<LoginResponse> => {
     const res = await apiClient.post<LoginResponse>('/auth/login', { username, password });
+    return res.data;
+  },
+
+  requestPasswordReset: async (identifier: string): Promise<{ success: boolean; message: string }> => {
+    const res = await apiClient.post('/auth/forgot-password', { identifier });
     return res.data;
   },
 
@@ -36,5 +40,9 @@ export const authApi = {
   getMe: async (): Promise<{ success: boolean; user: User }> => {
     const res = await apiClient.get('/auth/me');
     return res.data;
+  },
+
+  logout: async (): Promise<void> => {
+    await apiClient.post('/auth/logout');
   },
 };

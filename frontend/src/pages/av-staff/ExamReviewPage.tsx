@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { examsApi } from '../../api/exams';
-import { openAuthenticatedDocument } from '../../utils/secureDocument';
+import { downloadAuthenticatedResource } from '../../api/client';
 import { Exam, ExamStatus } from '../../types';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { StatusTimeline } from '../../components/common/StatusTimeline';
@@ -54,16 +54,6 @@ export const ExamReviewPage: React.FC = () => {
   useEffect(() => {
     fetchExam();
   }, [id]);
-
-  const handleOpenFile = async () => {
-    if (!id) return;
-    const documentWindow = window.open('', '_blank');
-    try {
-      await openAuthenticatedDocument(() => examsApi.getExamFile(id), documentWindow);
-    } catch (err: any) {
-      toast.error('เปิดไฟล์ไม่สำเร็จ', err.response?.data?.message || 'คุณไม่มีสิทธิ์เข้าถึงไฟล์นี้');
-    }
-  };
 
   // Handle Approve / "ตัดข้อสอบ" (REQ-0006)
   const handleApprove = async () => {
@@ -156,7 +146,10 @@ export const ExamReviewPage: React.FC = () => {
           {exam.file_url && (
             <button
               type="button"
-              onClick={handleOpenFile}
+              onClick={() =>
+                void downloadAuthenticatedResource(exam.file_url!, exam.original_filename || `exam-${exam.id}`)
+                  .catch(() => toast.error('ดาวน์โหลดไม่สำเร็จ', 'ไม่สามารถดาวน์โหลดไฟล์ข้อสอบได้'))
+              }
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-500/20 transition-all"
             >
               <Download className="w-4 h-4" />

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, ReactNod
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
 import { STATUS_LABELS_TH, ExamStatus } from '../types';
+import { BACKEND_ORIGIN } from '../api/client';
 
 interface WebSocketContextType {
   isConnected: boolean;
@@ -16,9 +17,12 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [lastEvent, setLastEvent] = useState<{ event: string; payload: any; timestamp: string } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<any>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    let disposed = false;
+    let reconnectAttempts = 0;
+
     if (!isAuthenticated || !user) {
       if (wsRef.current) {
         wsRef.current.close();
@@ -29,20 +33,23 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
 
     const connectWs = () => {
-      const savedToken = localStorage.getItem('print_exam_token');
-      if (!savedToken) return;
-
+      if (disposed) return;
       const configuredWsUrl = import.meta.env.VITE_WS_URL as string | undefined;
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const baseWsUrl = configuredWsUrl || `${protocol}//${window.location.host}/ws`;
-      // H-1: ส่ง JWT token ผ่าน query string เพื่อ authenticate ฝั่ง server
-      const wsUrl = `${baseWsUrl}?token=${encodeURIComponent(savedToken)}`;
-
+      const backendWsOrigin = BACKEND_ORIGIN
+        ? BACKEND_ORIGIN.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
+        : `${protocol}//${window.location.host}`;
+      const baseWsUrl = configuredWsUrl || `${backendWsOrigin}/ws`;
       try {
-        const ws = new WebSocket(wsUrl);
+        const ws = new WebSocket(baseWsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
+          if (disposed) {
+            ws.close(1000, 'Component disposed');
+            return;
+          }
+          reconnectAttempts = 0;
           setIsConnected(true);
         };
 
@@ -75,28 +82,47 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
           }
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
           setIsConnected(false);
-          // Auto reconnect in 3s
-          reconnectTimeoutRef.current = setTimeout(connectWs, 3000);
+          if (disposed) return;
+          // Authentication rejection needs a fresh login/profile completion;
+          // retrying it forever only floods the browser console.
+          if (event.code === 4001 || event.code === 4003) return;
+          const delay = Math.min(1000 * 2 ** reconnectAttempts, 15_000);
+          reconnectAttempts += 1;
+          reconnectTimeoutRef.current = setTimeout(connectWs, delay);
         };
 
-        ws.onerror = (err) => {
-          console.error('WebSocket error:', err);
-          ws.close();
+        ws.onerror = () => {
+          setIsConnected(false);
+          // onclose performs the bounded reconnect. Avoid logging the opaque
+          // browser Event object, which does not contain a useful cause.
         };
       } catch (err) {
-        console.error('WebSocket connection failed:', err);
-        reconnectTimeoutRef.current = setTimeout(connectWs, 3000);
+        if (!disposed) {
+          console.warn('ไม่สามารถเริ่มการเชื่อมต่อแบบเรียลไทม์ได้', err);
+          reconnectTimeoutRef.current = setTimeout(connectWs, 3000);
+        }
       }
     };
 
-    connectWs();
+    // Deferring one tick prevents React StrictMode's development-only setup /
+    // cleanup cycle from closing a socket before its handshake completes.
+    reconnectTimeoutRef.current = setTimeout(connectWs, 100);
 
     return () => {
+      disposed = true;
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (wsRef.current) {
-        wsRef.current.close();
+        const socket = wsRef.current;
+        socket.onclose = null;
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.close(1000, 'Component disposed');
+        } else if (socket.readyState === WebSocket.CONNECTING) {
+          socket.onopen = () => socket.close(1000, 'Component disposed');
+          socket.onerror = null;
+        }
+        wsRef.current = null;
       }
     };
   }, [isAuthenticated, user]);

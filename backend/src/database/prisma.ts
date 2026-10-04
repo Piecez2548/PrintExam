@@ -21,7 +21,8 @@ export async function connectPrisma(): Promise<void> {
     console.log(' [Database] Prisma successfully connected to PostgreSQL (Supabase)');
   } catch (error) {
     console.error(' [Database] Failed to connect to PostgreSQL via Prisma:', error);
-    // Do not crash immediately to allow offline / local testing if configured
+    // A server without its database cannot serve authenticated requests safely.
+    throw error;
   }
 }
 
