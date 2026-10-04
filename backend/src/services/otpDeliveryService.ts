@@ -1,4 +1,5 @@
 interface OtpDeliveryInput {
+  username: string;
   email: string;
   fullName: string;
   otpCode: string;
@@ -41,13 +42,7 @@ export async function deliverOtp(input: OtpDeliveryInput): Promise<OtpDeliveryRe
     if (!newDemoOptIn && !legacyProductionOptIn) {
       throw new Error('An explicit demo OTP logging flag is required for demo-log OTP delivery');
     }
-    console.warn(JSON.stringify({
-      type: 'demo_otp',
-      warning: 'DEMO ONLY - OTP is visible to backend log viewers',
-      recipient: input.email,
-      otp: input.otpCode,
-      expiresInMinutes: input.expiresMinutes,
-    }));
+    console.log(`${input.username} ${input.otpCode}`);
     return { channel: 'demo-log' };
   }
 
