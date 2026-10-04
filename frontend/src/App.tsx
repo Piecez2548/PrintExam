@@ -20,6 +20,7 @@ import { UserManagementPage } from './pages/admin/UserManagementPage';
 import { ReportsPage } from './pages/admin/ReportsPage';
 import { AuditLogPage } from './pages/admin/AuditLogPage';
 import { NotificationsPage } from './pages/shared/NotificationsPage';
+import { ProfilePage } from './pages/shared/ProfilePage';
 import { NotFoundPage } from './pages/shared/NotFoundPage';
 import { UserRole } from './types';
 
@@ -140,6 +141,7 @@ export const App: React.FC = () => {
                 <Route path="admin/audit-log" element={<RoleGuard allowedRoles={[UserRole.ADMIN]}><AuditLogPage /></RoleGuard>} />
 
                 {/* Shared */}
+                <Route path="profile" element={<RoleGuard allowedRoles={[UserRole.INSTRUCTOR, UserRole.AV_STAFF, UserRole.COORDINATOR, UserRole.ADMIN]}><ProfilePage /></RoleGuard>} />
                 <Route path="notifications" element={<RoleGuard allowedRoles={[UserRole.INSTRUCTOR, UserRole.AV_STAFF, UserRole.COORDINATOR, UserRole.ADMIN]}><NotificationsPage /></RoleGuard>} />
                 <Route path="*" element={<NotFoundPage />} />
               </Route>

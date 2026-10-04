@@ -2,8 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { RoleBadge } from '../common/RoleBadge';
-import { SelfProfileUpdate } from '../../api/auth';
-import { ProfileEditModal } from '../profile/ProfileEditModal';
 import { notificationsApi } from '../../api/notifications';
 import { NotificationItem } from '../../types';
 import {
@@ -19,12 +17,11 @@ import {
 import { useNavigate, Link } from 'react-router-dom';
 
 export const Navbar: React.FC = () => {
-  const { user, logout, updateProfile } = useAuth();
+  const { user, logout } = useAuth();
   const { isConnected, lastEvent } = useWebSocket();
   const navigate = useNavigate();
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isProfileEditOpen, setIsProfileEditOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -246,7 +243,7 @@ export const Navbar: React.FC = () => {
                     <button
                       onClick={() => {
                         setIsProfileOpen(false);
-                        setIsProfileEditOpen(true);
+                        navigate('/profile');
                       }}
                       className="w-full flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                     >
@@ -270,16 +267,6 @@ export const Navbar: React.FC = () => {
           )}
         </div>
       </div>
-      {user && (
-        <ProfileEditModal
-          user={user}
-          isOpen={isProfileEditOpen}
-          onClose={() => setIsProfileEditOpen(false)}
-          onSubmit={async (data: SelfProfileUpdate) => {
-            await updateProfile(data);
-          }}
-        />
-      )}
     </header>
   );
 };
