@@ -23,14 +23,74 @@ export const EnvelopePreviewModal: React.FC<EnvelopePreviewModalProps> = ({
 
   const actualCopies = exam.printed_copies ?? exam.print_records?.[0]?.printed_copies ?? exam.num_copies;
 
-  const handlePrint = async () => {
-    const documentWindow = window.open('', '_blank');
-    try {
-      // Print the authoritative standalone PDF so the Reports page layout is
-      // never included in the browser's printable document.
-      await openAuthenticatedDocument(() => examsApi.getEnvelopeLabel(exam.id), documentWindow);
-    } catch (err: any) {
-      toast.error('เปิดเอกสารสำหรับพิมพ์ไม่สำเร็จ', err.response?.data?.message || 'คุณไม่มีสิทธิ์เข้าถึงเอกสารนี้');
+  const handlePrint = () => {
+    const preview = document.getElementById('printable-envelope');
+    const printWindow = window.open('', '_blank');
+
+    if (!preview || !printWindow) {
+      toast.error('เปิดหน้าพิมพ์ไม่สำเร็จ', 'กรุณาอนุญาต popup แล้วลองใหม่อีกครั้ง');
+      return;
+    }
+
+    // Reuse the already-approved preview DOM, but render it in an isolated
+    // document so Reports, filters, and dashboard layout cannot be printed.
+    const coverSheet = preview.cloneNode(true) as HTMLElement;
+    coverSheet.removeAttribute('id');
+    coverSheet.classList.add('print-cover-sheet');
+
+    const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map((style) => style.outerHTML)
+      .join('\n');
+    const printStyles = `
+      @page { size: A4 portrait; margin: 8mm; }
+      html, body { margin: 0; padding: 0; background: #fff; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .print-sheet-root { width: 100%; margin: 0; padding: 0; }
+      .print-cover-sheet {
+        width: 194mm;
+        max-width: 194mm;
+        margin: 0 auto;
+        box-sizing: border-box;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        overflow: hidden;
+      }
+      @media print {
+        html, body { width: 194mm; height: 281mm; overflow: hidden; }
+        .print-cover-sheet { width: 100%; max-width: none; }
+      }
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html>
+      <html lang="th">
+        <head>
+          <meta charset="UTF-8" />
+          <title>ใบปะหน้าซองข้อสอบ</title>
+          ${styles}
+          <style>${printStyles}</style>
+        </head>
+        <body><main class="print-sheet-root">${coverSheet.outerHTML}</main></body>
+      </html>`);
+    printWindow.document.close();
+
+    let hasPrinted = false;
+    const print = () => {
+      if (hasPrinted) return;
+      hasPrinted = true;
+      printWindow.focus();
+      printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true });
+      printWindow.print();
+    };
+
+    const printWhenReady = () => {
+      void (printWindow.document.fonts?.ready || Promise.resolve()).then(print);
+    };
+
+    if (printWindow.document.readyState === 'complete') {
+      printWhenReady();
+    } else {
+      printWindow.addEventListener('load', printWhenReady, { once: true });
     }
   };
 

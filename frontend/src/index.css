@@ -27,22 +27,3 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
-
-/* Print Specific Rules for Official Envelope Label (REQ-0010) */
-@media print {
-  body * {
-    visibility: hidden;
-  }
-  #printable-envelope, #printable-envelope * {
-    visibility: visible;
-  }
-  #printable-envelope {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    border: 2px solid #000 !important;
-    margin: 0 !important;
-    padding: 15px !important;
-  }
-}
