@@ -14,13 +14,15 @@ import { clearAuthCookie, setAuthCookie, signAccessToken } from '../services/aut
 
 const router = Router();
 
-/** H-2: Rate limiting สำหรับ login (10 ครั้ง / 15 นาที) */
+const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 1000;
+
+/** H-2: Rate limiting สำหรับ login (10 ครั้ง / 15 วินาที) */
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: LOGIN_RATE_LIMIT_WINDOW_MS,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, message: 'ลองเข้าสู่ระบบมากเกินไป กรุณารอ 15 นาที' },
+  message: { success: false, message: 'ลองเข้าสู่ระบบมากเกินไป กรุณารอ 15 วินาที' },
 });
 
 /** H-2: Rate limiting สำหรับ OTP (5 ครั้ง / 3 นาที) */
