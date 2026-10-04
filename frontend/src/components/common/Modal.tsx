@@ -43,7 +43,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+      <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-6">
         {/* Backdrop */}
         <div
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
@@ -52,10 +52,10 @@ export const Modal: React.FC<ModalProps> = ({
 
         {/* Modal panel */}
         <div
-          className={`relative transform overflow-hidden rounded-2xl bg-white dark:bg-slate-900 text-left shadow-2xl transition-all sm:my-8 w-full ${maxWidthClasses[maxWidth]} border border-slate-200 dark:border-slate-800 z-10`}
+          className={`relative flex max-h-[calc(100dvh-2rem)] w-full flex-col transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all dark:bg-slate-900 sm:max-h-[calc(100dvh-3rem)] ${maxWidthClasses[maxWidth]} border border-slate-200 dark:border-slate-800 z-10`}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
             <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">{title}</h3>
             <button
               onClick={onClose}
@@ -66,7 +66,7 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
 
           {/* Body */}
-          <div className="p-6">{children}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">{children}</div>
         </div>
       </div>
     </div>
