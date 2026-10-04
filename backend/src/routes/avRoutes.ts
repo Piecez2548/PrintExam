@@ -302,6 +302,10 @@ router.get(
               coordinator: true,
             },
           },
+          printRecords: {
+            orderBy: { printedAt: 'desc' },
+            take: 1,
+          },
         },
       });
 
@@ -332,7 +336,7 @@ router.get(
         room: exam.schedule?.room || 'ห้องสอบตามประกาศ',
         deadlineDate: exam.schedule?.deadlineDate || undefined,
         coordinatorName: exam.schedule?.coordinator?.fullName || undefined,
-        numCopies: exam.numCopies,
+        numCopies: exam.printRecords?.[0]?.printedCopies ?? exam.numCopies,
         numPages: exam.numPages || 1,
         paperSize: exam.paperSize || 'A4',
         isDoubleSided: exam.isDoubleSided,
@@ -344,7 +348,8 @@ router.get(
       });
 
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="Envelope_Label_${exam.course.courseCode}_${id}.pdf"`);
+      const safeCourseCode = exam.course.courseCode.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || `exam-${id}`;
+      res.setHeader('Content-Disposition', `inline; filename="cover-sheet-${safeCourseCode}.pdf"`);
       res.send(pdfBuffer);
     } catch (error) {
       console.error('[Error generating PDF]', error);
