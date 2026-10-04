@@ -179,7 +179,7 @@ router.post('/', authenticateToken, requireRole(UserRole.ADMIN), async (req: Aut
   }
 });
 
-// Update the signed-in user's own profile and replace the administrator-issued password.
+// Update the signed-in user's profile and optionally change their password.
 router.put('/me/profile', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   const { username, full_name, email, department, phone, office_room, current_password, new_password } = req.body;
   const normalizedUsername = String(username || '').trim();
@@ -220,10 +220,6 @@ router.put('/me/profile', authenticateToken, async (req: AuthRequest, res: Respo
     const current = await prisma.user.findUnique({ where: { id: req.user!.id } });
     if (!current) {
       res.status(404).json({ success: false, message: 'ไม่พบบัญชีผู้ใช้' });
-      return;
-    }
-    if (current.mustChangePassword && !new_password) {
-      res.status(400).json({ success: false, message: 'บัญชีใหม่ต้องตั้งรหัสผ่านส่วนตัวก่อนใช้งานระบบ' });
       return;
     }
     if (new_password) {

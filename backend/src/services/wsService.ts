@@ -44,12 +44,10 @@ export function initWebSocketServer(server: Server): WebSocketServer {
 
       const user = await prisma.user.findUnique({
         where: { id: decoded.id },
-        select: { id: true, role: true, isActive: true, sessionVersion: true, mustChangePassword: true },
+        select: { id: true, role: true, isActive: true, sessionVersion: true },
       });
       if (!user?.isActive) throw new Error('Account is inactive');
       if (decoded.sessionVersion !== user.sessionVersion) throw new Error('Session has been revoked');
-      if (user.mustChangePassword) throw new Error('Password change is required');
-
       ws.userId = user.id;
       ws.userRole = user.role;
       ws.isAlive = true;
