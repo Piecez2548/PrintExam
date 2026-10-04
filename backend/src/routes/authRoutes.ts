@@ -9,6 +9,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { recordAuditLog } from '../middleware/audit';
 import { UserRole } from '../../generated/prisma';
 import { isPrivateDemoOtpLoggingEnabled } from '../config/otp';
+import { validateSelfProfileUpdate } from '../security/selfProfile';
 
 const router = Router();
 
@@ -253,6 +254,67 @@ router.post('/quick-login', async (req: Request, res: Response): Promise<void> =
   } catch (error) {
     console.error('[QuickLogin Error]', error);
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการสลับบทบาท' });
+  }
+});
+
+// แก้ไขข้อมูลส่วนตัวของบัญชีปัจจุบันเท่านั้น (REQ-0005)
+router.patch('/me', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+  const validation = validateSelfProfileUpdate(req.body);
+  if (!validation.ok) {
+    res.status(400).json({ success: false, message: validation.message });
+    return;
+  }
+
+  try {
+    const updated = await prisma.user.update({
+      where: { id: req.user!.id },
+      data: validation.data,
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        email: true,
+        role: true,
+        department: true,
+        phone: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+
+    await recordAuditLog(
+      req.user!.id,
+      req.user!.full_name,
+      req.user!.role,
+      'UPDATE_SELF_PROFILE',
+      'USER',
+      req.user!.id.toString(),
+      req.ip || '127.0.0.1',
+      { updated_fields: validation.fields }
+    );
+
+    res.json({
+      success: true,
+      message: 'อัปเดตข้อมูลส่วนตัวสำเร็จ',
+      user: {
+        id: updated.id,
+        username: updated.username,
+        full_name: updated.fullName,
+        email: updated.email,
+        role: updated.role,
+        department: updated.department,
+        phone: updated.phone,
+        is_active: updated.isActive,
+        created_at: updated.createdAt.toISOString(),
+      },
+    });
+  } catch (error: any) {
+    if (error?.code === 'P2002') {
+      res.status(409).json({ success: false, message: 'อีเมลนี้มีผู้ใช้งานอื่นอยู่แล้ว' });
+      return;
+    }
+    console.error('[Self Profile Update Error]', error);
+    res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการอัปเดตข้อมูลส่วนตัว' });
   }
 });
 

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, UserRole } from '../types';
-import { authApi, LoginResponse, Verify2FAResponse } from '../api/auth';
+import { authApi, LoginResponse, SelfProfileUpdate, Verify2FAResponse } from '../api/auth';
 import { useToast } from './ToastContext';
 
 interface AuthContextType {
@@ -10,6 +10,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (username: string, password: string) => Promise<LoginResponse>;
   verify2FA: (tempToken: string, otpCode: string) => Promise<Verify2FAResponse>;
+  updateProfile: (data: SelfProfileUpdate) => Promise<User>;
   quickSwitchRole: (role: UserRole) => Promise<void>;
   logout: () => void;
   // Role helpers
@@ -66,6 +67,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return res;
   };
 
+  const updateProfile = async (data: SelfProfileUpdate): Promise<User> => {
+    const res = await authApi.updateMe(data);
+    setUser(res.user);
+    localStorage.setItem('print_exam_user', JSON.stringify(res.user));
+    toast.success('บันทึกข้อมูลส่วนตัวสำเร็จ', 'ข้อมูลในระบบได้รับการอัปเดตแล้ว');
+    return res.user;
+  };
+
   const quickSwitchRole = async (role: UserRole): Promise<void> => {
     try {
       const res = await authApi.quickLogin(role);
@@ -101,6 +110,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isLoading,
         login,
         verify2FA,
+        updateProfile,
         quickSwitchRole,
         logout,
         isInstructor,

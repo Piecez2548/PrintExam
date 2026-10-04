@@ -17,6 +17,13 @@ export interface Verify2FAResponse {
   user: User;
 }
 
+export interface SelfProfileUpdate {
+  full_name?: string;
+  email?: string;
+  department?: string | null;
+  phone?: string | null;
+}
+
 export const authApi = {
   login: async (username: string, password: string): Promise<LoginResponse> => {
     const res = await apiClient.post<LoginResponse>('/auth/login', { username, password });
@@ -35,6 +42,11 @@ export const authApi = {
 
   getMe: async (): Promise<{ success: boolean; user: User }> => {
     const res = await apiClient.get('/auth/me');
+    return res.data;
+  },
+
+  updateMe: async (data: SelfProfileUpdate): Promise<{ success: boolean; message: string; user: User }> => {
+    const res = await apiClient.patch('/auth/me', data);
     return res.data;
   },
 };
