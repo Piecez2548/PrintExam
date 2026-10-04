@@ -4,6 +4,10 @@ import { Exam } from '../../types';
 import { Printer, Download, QrCode, CheckSquare, ShieldCheck } from 'lucide-react';
 import { examsApi } from '../../api/exams';
 import { openAuthenticatedDocument } from '../../utils/secureDocument';
+import {
+  buildCoverSheetPrintDocument,
+  collectCoverSheetStyles,
+} from '../../utils/printCoverSheet';
 import { useToast } from '../../context/ToastContext';
 
 interface EnvelopePreviewModalProps {
@@ -35,43 +39,15 @@ export const EnvelopePreviewModal: React.FC<EnvelopePreviewModalProps> = ({
     // Reuse the already-approved preview DOM, but render it in an isolated
     // document so Reports, filters, and dashboard layout cannot be printed.
     const coverSheet = preview.cloneNode(true) as HTMLElement;
-    coverSheet.removeAttribute('id');
     coverSheet.classList.add('print-cover-sheet');
 
-    const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-      .map((style) => style.outerHTML)
-      .join('\n');
-    const printStyles = `
-      @page { size: A4 portrait; margin: 8mm; }
-      html, body { margin: 0; padding: 0; background: #fff; }
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .print-sheet-root { width: 100%; margin: 0; padding: 0; }
-      .print-cover-sheet {
-        width: 194mm;
-        max-width: 194mm;
-        margin: 0 auto;
-        box-sizing: border-box;
-        border-radius: 0 !important;
-        box-shadow: none !important;
-        overflow: hidden;
-      }
-      @media print {
-        html, body { width: 194mm; height: 281mm; overflow: hidden; }
-        .print-cover-sheet { width: 100%; max-width: none; }
-      }
-    `;
-
     printWindow.document.open();
-    printWindow.document.write(`<!doctype html>
-      <html lang="th">
-        <head>
-          <meta charset="UTF-8" />
-          <title>ใบปะหน้าซองข้อสอบ</title>
-          ${styles}
-          <style>${printStyles}</style>
-        </head>
-        <body><main class="print-sheet-root">${coverSheet.outerHTML}</main></body>
-      </html>`);
+    printWindow.document.write(
+      buildCoverSheetPrintDocument(
+        coverSheet.outerHTML,
+        collectCoverSheetStyles(document),
+      ),
+    );
     printWindow.document.close();
 
     let hasPrinted = false;
@@ -83,8 +59,26 @@ export const EnvelopePreviewModal: React.FC<EnvelopePreviewModalProps> = ({
       printWindow.print();
     };
 
-    const printWhenReady = () => {
-      void (printWindow.document.fonts?.ready || Promise.resolve()).then(print);
+    const printWhenReady = async () => {
+      const stylesheetLinks = Array.from(
+        printWindow.document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'),
+      );
+      await Promise.all(
+        stylesheetLinks.map(
+          (link) =>
+            new Promise<void>((resolve) => {
+              if (link.sheet) {
+                resolve();
+                return;
+              }
+              link.addEventListener('load', () => resolve(), { once: true });
+              link.addEventListener('error', () => resolve(), { once: true });
+              window.setTimeout(resolve, 3000);
+            }),
+        ),
+      );
+      await (printWindow.document.fonts?.ready || Promise.resolve());
+      print();
     };
 
     if (printWindow.document.readyState === 'complete') {
