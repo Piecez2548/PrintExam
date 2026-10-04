@@ -91,17 +91,6 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
       created_at: user.createdAt.toISOString(),
     };
 
-    const allowedDuringPasswordChange = new Set(['/api/auth/me', '/api/auth/logout', '/api/users/me/profile']);
-    const requestPath = req.originalUrl.split('?')[0];
-    if (user.mustChangePassword && !allowedDuringPasswordChange.has(requestPath)) {
-      res.status(428).json({
-        success: false,
-        code: 'PASSWORD_CHANGE_REQUIRED',
-        message: 'กรุณาตั้งรหัสผ่านส่วนตัวในหน้าโปรไฟล์ก่อนใช้งานเมนูอื่น',
-      });
-      return;
-    }
-
     next();
   } catch (err) {
     res.status(403).json({ success: false, message: 'Token ไม่ถูกต้องหรือหมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่' });

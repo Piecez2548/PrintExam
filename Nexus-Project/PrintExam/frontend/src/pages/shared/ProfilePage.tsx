@@ -31,10 +31,6 @@ export const ProfilePage: React.FC = () => {
       toast.warning('รหัสผ่านใหม่และการยืนยันไม่ตรงกัน');
       return;
     }
-    if (user.must_change_password && !newPassword) {
-      toast.warning('กรุณาตั้งรหัสผ่านส่วนตัวก่อนใช้งานระบบ');
-      return;
-    }
     try {
       setSaving(true);
       const result = await profileApi.update({
@@ -71,7 +67,7 @@ export const ProfilePage: React.FC = () => {
       {user.must_change_password && (
         <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-4 text-sm text-amber-900 dark:text-amber-200 flex gap-3">
           <ShieldCheck className="w-5 h-5 shrink-0" />
-          <div><strong>ตั้งค่าบัญชีครั้งแรก</strong><div className="mt-0.5">บัญชีนี้สร้างโดยผู้ดูแลระบบ กรุณาตรวจข้อมูลและเปลี่ยนรหัสผ่านก่อนเข้าเมนูอื่น</div></div>
+          <div><strong>คำแนะนำความปลอดภัย</strong><div className="mt-0.5">บัญชีนี้อาจใช้รหัสผ่านเริ่มต้น คุณสามารถเปลี่ยนรหัสผ่านได้จากหน้านี้ทุกเมื่อ</div></div>
         </div>
       )}
 
@@ -88,8 +84,8 @@ export const ProfilePage: React.FC = () => {
         <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
           <h2 className="font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-4"><KeyRound className="w-5 h-5" /> เปลี่ยนรหัสผ่าน</h2>
           <div className="grid sm:grid-cols-3 gap-4">
-            <label htmlFor="profile-current-password" className="text-sm font-semibold text-slate-700 dark:text-slate-200">รหัสผ่านที่แอดมินให้/ปัจจุบัน<input id="profile-current-password" name="current_password" type="password" autoComplete="current-password" className={`${inputClass} mt-1.5`} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required={user.must_change_password || Boolean(newPassword)} /></label>
-            <label htmlFor="profile-new-password" className="text-sm font-semibold text-slate-700 dark:text-slate-200">รหัสผ่านใหม่<input id="profile-new-password" name="new_password" type="password" autoComplete="new-password" className={`${inputClass} mt-1.5`} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required={user.must_change_password} minLength={12} placeholder="12+ ตัว: A-Z, a-z, 0-9 และอักขระพิเศษ" /></label>
+            <label htmlFor="profile-current-password" className="text-sm font-semibold text-slate-700 dark:text-slate-200">รหัสผ่านที่แอดมินให้/ปัจจุบัน<input id="profile-current-password" name="current_password" type="password" autoComplete="current-password" className={`${inputClass} mt-1.5`} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required={Boolean(newPassword)} /></label>
+            <label htmlFor="profile-new-password" className="text-sm font-semibold text-slate-700 dark:text-slate-200">รหัสผ่านใหม่<input id="profile-new-password" name="new_password" type="password" autoComplete="new-password" className={`${inputClass} mt-1.5`} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={12} placeholder="12+ ตัว: A-Z, a-z, 0-9 และอักขระพิเศษ" /></label>
             <label htmlFor="profile-confirm-password" className="text-sm font-semibold text-slate-700 dark:text-slate-200">ยืนยันรหัสผ่านใหม่<input id="profile-confirm-password" name="confirm_password" type="password" autoComplete="new-password" className={`${inputClass} mt-1.5`} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required={Boolean(newPassword)} minLength={12} /></label>
           </div>
         </section>
