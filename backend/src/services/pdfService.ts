@@ -29,9 +29,13 @@ export function generateEnvelopeLabelPdf(details: EnvelopeDetails): Promise<Buff
     try {
       const doc = new PDFDocument({
         size: 'A4',
-        layout: 'landscape',
+        layout: 'portrait',
         margin: 30,
       });
+
+      // Keep the approved landscape label layout intact while fitting it onto
+      // one clean A4 portrait page for the standalone printable artifact.
+      doc.scale(0.7);
 
       const buffers: Buffer[] = [];
       doc.on('data', (chunk) => buffers.push(chunk));

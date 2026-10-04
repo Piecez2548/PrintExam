@@ -23,8 +23,15 @@ export const EnvelopePreviewModal: React.FC<EnvelopePreviewModalProps> = ({
 
   const actualCopies = exam.printed_copies ?? exam.print_records?.[0]?.printed_copies ?? exam.num_copies;
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    const documentWindow = window.open('', '_blank');
+    try {
+      // Print the authoritative standalone PDF so the Reports page layout is
+      // never included in the browser's printable document.
+      await openAuthenticatedDocument(() => examsApi.getEnvelopeLabel(exam.id), documentWindow);
+    } catch (err: any) {
+      toast.error('เปิดเอกสารสำหรับพิมพ์ไม่สำเร็จ', err.response?.data?.message || 'คุณไม่มีสิทธิ์เข้าถึงเอกสารนี้');
+    }
   };
 
   const handleDownloadPdf = async () => {
