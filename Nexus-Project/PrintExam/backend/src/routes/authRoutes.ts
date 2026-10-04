@@ -146,6 +146,7 @@ router.post('/login', loginLimiter, async (req: Request, res: Response): Promise
     const otpHash = bcrypt.hashSync(otpCode, 10);
     const expiresAt = new Date(Date.now() + TWO_FACTOR_EXPIRY_MINUTES * 60 * 1000);
     const delivery = await deliverOtp({
+      username: user.username,
       email: user.email,
       fullName: user.fullName,
       otpCode,

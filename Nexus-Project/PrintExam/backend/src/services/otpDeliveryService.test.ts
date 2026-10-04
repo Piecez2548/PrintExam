@@ -11,7 +11,7 @@ test('production demo-log mode requires an explicit demo flag', async () => {
   delete process.env.ENABLE_DEMO_OTP_LOGGING;
   try {
     await assert.rejects(
-      deliverOtp({ email: 'demo@example.com', fullName: 'Demo', otpCode: '123456', expiresMinutes: 3 }),
+      deliverOtp({ username: 'demo-user', email: 'demo@example.com', fullName: 'Demo', otpCode: '123456', expiresMinutes: 3 }),
       /explicit demo OTP logging flag/
     );
   } finally {
@@ -21,22 +21,23 @@ test('production demo-log mode requires an explicit demo flag', async () => {
   }
 });
 
-test('explicit demo-log mode writes the OTP to the server log', async () => {
+test('explicit demo-log mode writes only username and generated OTP in legacy format', async () => {
   const previousNodeEnv = process.env.NODE_ENV;
   const previousMode = process.env.OTP_DELIVERY_MODE;
   const previousFlag = process.env.ENABLE_DEMO_OTP_LOGGING;
-  const originalWarn = console.warn;
+  const originalLog = console.log;
   let logged = '';
   process.env.NODE_ENV = 'production';
   process.env.OTP_DELIVERY_MODE = 'demo-log';
   process.env.ENABLE_DEMO_OTP_LOGGING = 'true';
-  console.warn = (message?: unknown) => { logged += String(message); };
+  console.log = (message?: unknown) => { logged += String(message); };
   try {
-    const result = await deliverOtp({ email: 'demo@example.com', fullName: 'Demo', otpCode: '654321', expiresMinutes: 3 });
+    const result = await deliverOtp({ username: 'demo-user', email: 'demo@example.com', fullName: 'Demo Person', otpCode: '654321', expiresMinutes: 3 });
     assert.equal(result.channel, 'demo-log');
-    assert.match(logged, /654321/);
+    assert.equal(logged, 'demo-user 654321');
+    assert.doesNotMatch(logged, /Demo Person|demo@example\.com|password|token|jwt/i);
   } finally {
-    console.warn = originalWarn;
+    console.log = originalLog;
     process.env.NODE_ENV = previousNodeEnv;
     process.env.OTP_DELIVERY_MODE = previousMode;
     process.env.ENABLE_DEMO_OTP_LOGGING = previousFlag;
@@ -48,20 +49,19 @@ test('legacy private production flag restores the previous OTP log delivery when
   const previousMode = process.env.OTP_DELIVERY_MODE;
   const previousLegacyFlag = process.env.ENABLE_PRIVATE_DEMO_OTP_LOG;
   const previousFlag = process.env.ENABLE_DEMO_OTP_LOGGING;
-  const originalWarn = console.warn;
+  const originalLog = console.log;
   let logged = '';
   process.env.NODE_ENV = 'production';
   delete process.env.OTP_DELIVERY_MODE;
   process.env.ENABLE_PRIVATE_DEMO_OTP_LOG = 'true';
   delete process.env.ENABLE_DEMO_OTP_LOGGING;
-  console.warn = (message?: unknown) => { logged += String(message); };
+  console.log = (message?: unknown) => { logged += String(message); };
   try {
-    const result = await deliverOtp({ email: 'demo@example.com', fullName: 'Demo', otpCode: '123456', expiresMinutes: 3 });
+    const result = await deliverOtp({ username: 'demo-user', email: 'demo@example.com', fullName: 'Demo', otpCode: '123456', expiresMinutes: 3 });
     assert.equal(result.channel, 'demo-log');
-    assert.match(logged, /123456/);
-    assert.match(logged, /DEMO ONLY/);
+    assert.equal(logged, 'demo-user 123456');
   } finally {
-    console.warn = originalWarn;
+    console.log = originalLog;
     process.env.NODE_ENV = previousNodeEnv;
     process.env.OTP_DELIVERY_MODE = previousMode;
     process.env.ENABLE_PRIVATE_DEMO_OTP_LOG = previousLegacyFlag;
@@ -82,7 +82,7 @@ test('legacy private OTP flag does not override an explicitly selected provider'
   delete process.env.OTP_FROM_EMAIL;
   try {
     await assert.rejects(
-      deliverOtp({ email: 'demo@example.com', fullName: 'Demo', otpCode: '123456', expiresMinutes: 3 }),
+      deliverOtp({ username: 'demo-user', email: 'demo@example.com', fullName: 'Demo', otpCode: '123456', expiresMinutes: 3 }),
       /RESEND_API_KEY and OTP_FROM_EMAIL/
     );
   } finally {
