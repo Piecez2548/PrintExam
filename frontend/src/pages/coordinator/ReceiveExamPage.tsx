@@ -169,7 +169,7 @@ export const ReceiveExamPage: React.FC = () => {
                           {exam.start_time && exam.end_time ? `${exam.start_time}-${exam.end_time} น.` : ''}
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 font-bold text-rose-600">
+                      <td className="py-3.5 px-4 font-bold text-brand-600">
                         {exam.room || 'ตามตาราง'}
                       </td>
                       <td className="py-3.5 px-4 font-extrabold text-slate-800 dark:text-slate-200">
@@ -237,7 +237,7 @@ export const ReceiveExamPage: React.FC = () => {
                     <td className="py-3.5 px-4 text-slate-600">
                       {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString('th-TH') : '-'}
                     </td>
-                    <td className="py-3.5 px-4 font-semibold text-rose-600">{exam.room}</td>
+                    <td className="py-3.5 px-4 font-semibold text-brand-600">{exam.room}</td>
                     <td className="py-3.5 px-4 font-bold">{exam.printed_copies ?? exam.num_copies} ชุด</td>
                     <td className="py-3.5 px-4">
                       <StatusBadge status={exam.status} />

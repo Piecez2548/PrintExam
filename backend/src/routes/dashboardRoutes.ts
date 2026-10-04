@@ -159,6 +159,8 @@ router.get(
       end_time: e.schedule?.endTime,
       room: e.schedule?.room,
       exam_type: e.schedule?.examType,
+      deadline_date: e.schedule?.deadlineDate,
+      special_instructions: e.specialInstructions,
       schedule_status: e.schedule?.status,
       coordinator_id: e.schedule?.coordinatorId,
       coordinator_name: e.schedule?.coordinator?.fullName,

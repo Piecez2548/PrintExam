@@ -208,7 +208,7 @@ export const AvQueuePage: React.FC = () => {
                       <div className="text-[11px] text-slate-500">
                         {exam.start_time && exam.end_time ? `${exam.start_time}-${exam.end_time} น.` : ''}
                       </div>
-                      <div className="text-[11px] font-semibold text-rose-600">
+                      <div className="text-[11px] font-semibold text-brand-600">
                         {exam.room || 'ตามตาราง'}
                       </div>
                     </td>

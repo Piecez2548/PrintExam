@@ -11,6 +11,8 @@ export interface EnvelopeDetails {
   examDate: string;
   examTime: string;
   room: string;
+  deadlineDate?: string;
+  coordinatorName?: string;
   numCopies: number;
   numPages: number;
   paperSize: string;
@@ -94,7 +96,13 @@ export function generateEnvelopeLabelPdf(details: EnvelopeDetails): Promise<Buff
       doc.fontSize(12).font('Helvetica').text(details.examTime, 160, y + 35);
 
       doc.fontSize(11).font('Helvetica-Bold').text('EXAM ROOM:', 320, y + 35);
-      doc.fontSize(12).fillColor('#b91c1c').font('Helvetica-Bold').text(details.room, 420, y + 35);
+      doc.fontSize(12).fillColor('#0369a1').font('Helvetica-Bold').text(details.room, 420, y + 35);
+
+      doc.fontSize(10).fillColor('#0f172a').font('Helvetica-Bold').text('DEADLINE:', 50, y + 60);
+      doc.fontSize(10).font('Helvetica').text(details.deadlineDate || 'ตามกำหนดการ', 160, y + 60);
+
+      doc.fontSize(10).font('Helvetica-Bold').text('COORDINATOR:', 320, y + 60);
+      doc.fontSize(10).font('Helvetica').text(details.coordinatorName || 'ยังไม่กำหนด', 420, y + 60);
 
       // Quantities & Printing Specs Box
       y += 90;

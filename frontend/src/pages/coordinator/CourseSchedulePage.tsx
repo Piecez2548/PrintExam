@@ -508,7 +508,7 @@ export const CourseSchedulePage: React.FC = () => {
                           {sched.start_time} - {sched.end_time} น.
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 font-bold text-rose-600">
+                      <td className="py-3.5 px-4 font-bold text-brand-600">
                         {sched.room}
                       </td>
                       <td className="py-3.5 px-4 text-slate-600">

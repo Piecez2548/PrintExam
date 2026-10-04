@@ -141,6 +141,7 @@ export interface Exam {
   end_time?: string;
   room?: string;
   exam_type?: string;
+  deadline_date?: string;
   file_url?: string;
   original_filename?: string;
   file_type?: string;

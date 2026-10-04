@@ -142,10 +142,22 @@ export const EnvelopePreviewModal: React.FC<EnvelopePreviewModalProps> = ({
                 {exam.start_time && exam.end_time ? `${exam.start_time} - ${exam.end_time} น.` : 'ตามประกาศ'}
               </div>
             </div>
-            <div className="md:col-span-2 bg-rose-50 p-2.5 rounded border border-rose-200">
-              <div className="text-[11px] font-semibold text-rose-700">ห้องสอบ (Exam Room)</div>
-              <div className="text-base font-extrabold text-rose-900 mt-0.5">
+            <div className="bg-sky-50 p-2.5 rounded border border-sky-200">
+              <div className="text-[11px] font-semibold text-sky-700">ห้องสอบ (Exam Room)</div>
+              <div className="text-base font-extrabold text-sky-900 mt-0.5">
                 {exam.room || 'ตามตารางจัดสอบ'}
+              </div>
+            </div>
+            <div className="bg-slate-100 p-2.5 rounded border border-slate-200">
+              <div className="text-[11px] font-semibold text-slate-500">กำหนดส่งไฟล์ (Deadline)</div>
+              <div className="text-sm font-bold text-slate-800 mt-0.5">
+                {exam.deadline_date || 'ตามกำหนดการ'}
+              </div>
+            </div>
+            <div className="md:col-span-4 bg-slate-50 p-2.5 rounded border border-slate-200">
+              <div className="text-[11px] font-semibold text-slate-500">ผู้ประสานงานการสอบ (Coordinator)</div>
+              <div className="text-sm font-bold text-slate-800 mt-0.5">
+                {exam.coordinator_name || 'ยังไม่กำหนด'}
               </div>
             </div>
           </div>

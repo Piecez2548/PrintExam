@@ -84,6 +84,7 @@ export function formatExam(e: any) {
     end_time: e.schedule ? e.schedule.endTime : undefined,
     room: e.schedule ? e.schedule.room : undefined,
     exam_type: e.schedule ? e.schedule.examType : undefined,
+    deadline_date: e.schedule ? e.schedule.deadlineDate : undefined,
     coordinator_name: e.schedule?.coordinator ? e.schedule.coordinator.fullName : undefined,
   };
 }

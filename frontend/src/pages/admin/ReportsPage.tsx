@@ -384,7 +384,7 @@ export const ReportsPage: React.FC = () => {
                       <div className="font-medium text-slate-800 dark:text-slate-200">{row.instructor_name}</div>
                       <div className="text-[11px] text-slate-400">{row.instructor_department}</div>
                     </td>
-                    <td className="py-3.5 px-4 font-bold text-rose-600">
+                    <td className="py-3.5 px-4 font-bold text-brand-600">
                       {row.room || '-'}
                     </td>
                     <td className="py-3.5 px-4 font-black text-slate-800 dark:text-slate-200">
@@ -406,13 +406,16 @@ export const ReportsPage: React.FC = () => {
                             course_name: row.course_name,
                             instructor_name: row.instructor_name,
                             exam_date: row.exam_date,
+                            deadline_date: row.deadline_date,
                             start_time: row.start_time,
                             end_time: row.end_time,
                             room: row.room,
+                            coordinator_name: row.coordinator_name,
                             num_copies: row.num_copies,
                             num_pages: row.num_pages,
                             paper_size: row.paper_size,
                             is_double_sided: row.is_double_sided,
+                            special_instructions: row.special_instructions,
                             semester: row.semester,
                             academic_year: row.academic_year,
                           })

@@ -185,7 +185,7 @@ export const ExamReviewPage: React.FC = () => {
           </div>
           <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl">
             <span className="text-slate-400">ห้องสอบ:</span>
-            <div className="font-bold text-rose-600 mt-1">{exam.room || 'ตามตารางสอบ'}</div>
+            <div className="font-bold text-brand-600 mt-1">{exam.room || 'ตามตารางสอบ'}</div>
           </div>
         </div>
 

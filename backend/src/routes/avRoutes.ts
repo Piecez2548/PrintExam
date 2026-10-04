@@ -8,6 +8,7 @@ import { createNotification } from '../services/notificationService';
 import { generateEnvelopeLabelPdf } from '../services/pdfService';
 import { ExamStatus, UserRole } from '../../generated/prisma';
 import { canTransitionExamStatus, transitionErrorMessage } from '../security/examStatus';
+import { canAccessExamEnvelope } from '../security/examAccess';
 
 const router = Router();
 
@@ -276,13 +277,12 @@ router.post(
   }
 );
 
-// 4. Generate & Download Envelope Label PDF (REQ-0010: เจ้าหน้าที่หน่วยโสต, ผู้ดูแลระบบ)
+// 4. Generate & Download Envelope Label PDF (REQ-0010: owner/instructor and operational roles)
 // GET is intentionally side-effect free: viewing/downloading a document must not
 // create or update an EnvelopeLabel record.
 router.get(
   '/:id/envelope-label',
   authenticateToken,
-  requireRole(UserRole.AV_STAFF, UserRole.ADMIN, UserRole.COORDINATOR),
   async (req: AuthRequest, res: Response): Promise<void> => {
     const { id } = req.params;
     const user = req.user!;
@@ -297,12 +297,21 @@ router.get(
               instructor: true,
             },
           },
-          schedule: true,
+          schedule: {
+            include: {
+              coordinator: true,
+            },
+          },
         },
       });
 
       if (!exam) {
         res.status(404).json({ success: false, message: 'ไม่พบข้อสอบ' });
+        return;
+      }
+
+      if (!canAccessExamEnvelope(user, exam)) {
+        res.status(403).json({ success: false, message: 'คุณไม่มีสิทธิ์เข้าถึงใบปะหน้าซองข้อสอบนี้' });
         return;
       }
 
@@ -321,6 +330,8 @@ router.get(
             ? `${exam.schedule.startTime} - ${exam.schedule.endTime}`
             : 'ตามตารางสอบ',
         room: exam.schedule?.room || 'ห้องสอบตามประกาศ',
+        deadlineDate: exam.schedule?.deadlineDate || undefined,
+        coordinatorName: exam.schedule?.coordinator?.fullName || undefined,
         numCopies: exam.numCopies,
         numPages: exam.numPages || 1,
         paperSize: exam.paperSize || 'A4',
