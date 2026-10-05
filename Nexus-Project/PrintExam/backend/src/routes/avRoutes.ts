@@ -6,6 +6,7 @@ import { recordAuditLog } from '../middleware/audit';
 import { broadcastEvent } from '../services/wsService';
 import { createNotification } from '../services/notificationService';
 import { generateEnvelopeLabelPdf } from '../services/pdfService';
+import { createPaperPrintSpecification } from '../data/paperPrintSpecification';
 import { ExamStatus, UserRole } from '../../generated/prisma';
 
 const router = Router();
@@ -191,7 +192,7 @@ router.post(
   requireRole(UserRole.AV_STAFF, UserRole.ADMIN),
   async (req: AuthRequest, res: Response): Promise<void> => {
     const { id } = req.params;
-    const { printed_copies, paper_type, notes, mark_completed } = req.body;
+    const { printed_copies, paper_weight, notes, mark_completed } = req.body;
     const user = req.user!;
     const examId = Number(id);
 
@@ -213,6 +214,18 @@ router.post(
         return;
       }
 
+      const paperSpecification = createPaperPrintSpecification(exam.paperSize, exam.isDoubleSided, paper_weight);
+      if (!paperSpecification.ok) {
+        res.status(400).json({
+          success: false,
+          code: 'UNSUPPORTED_PRINT_SPEC',
+          message: 'ขนาดหรือชนิดกระดาษที่เลือกไม่รองรับ',
+        });
+        return;
+      }
+      // Keep successful request audit entries canonical even if an old or malicious client sends paper_type.
+      req.body.paper_type = paperSpecification.paperType;
+
       const copies = Number(printed_copies || exam.numCopies);
       if (!Number.isInteger(copies) || copies < 1 || copies > 100000) {
         res.status(400).json({ success: false, message: 'จำนวนชุดที่พิมพ์ไม่ถูกต้อง' });
@@ -227,7 +240,7 @@ router.post(
             examId,
             printedById: user.id,
             printedCopies: copies,
-            paperType: String(paper_type || 'A4 80gsm').slice(0, 100),
+            paperType: paperSpecification.paperType,
             notes: notes ? String(notes).slice(0, 1000) : null,
           },
         }),
@@ -239,7 +252,7 @@ router.post(
             toStatus: newStatus,
             actionById: user.id,
             actionName: user.full_name,
-            note: `จัดพิมพ์จำนวน ${copies} ชุด (${paper_type || 'A4 80gsm'}) ${mark_completed ? '[พิมพ์เสร็จสมบูรณ์]' : '[กำลังจัดพิมพ์]'}`,
+            note: `จัดพิมพ์จำนวน ${copies} ชุด (${paperSpecification.paperType}) ${mark_completed ? '[พิมพ์เสร็จสมบูรณ์]' : '[กำลังจัดพิมพ์]'}`,
           },
         }),
       ]);
@@ -248,7 +261,7 @@ router.post(
 
       await recordAuditLog(user.id, user.full_name, user.role, 'PRINT_EXAM', 'EXAM', id, req.ip || '127.0.0.1', {
         printed_copies: copies,
-        paper_type,
+        paper_type: paperSpecification.paperType,
         status: newStatus,
       });
 

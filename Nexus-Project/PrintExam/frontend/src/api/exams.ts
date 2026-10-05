@@ -44,7 +44,7 @@ export const examsApi = {
 
   printExam: async (
     id: number | string,
-    data: { printed_copies?: number; paper_type?: string; notes?: string; mark_completed?: boolean }
+    data: { printed_copies?: number; paper_weight?: string; notes?: string; mark_completed?: boolean }
   ): Promise<{ success: boolean; message: string }> => {
     const res = await apiClient.post(`/exams/${id}/print`, data);
     return res.data;
