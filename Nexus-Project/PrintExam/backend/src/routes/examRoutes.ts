@@ -14,6 +14,63 @@ import { buildAuditChanges, buildAuditValueChange, parseAuditChanges, sortAuditT
 
 const router = Router();
 
+const EXAM_LANGUAGE_OPTIONS = ['THAI', 'ENGLISH', 'BILINGUAL'] as const;
+const PRINT_FORMAT_OPTIONS = ['SINGLE_SIDED', 'DOUBLE_SIDED', 'BOOKLET', 'OTHER'] as const;
+const ALLOWED_MATERIAL_OPTIONS = ['BOOK', 'CALCULATOR', 'NO_FORMULA_RULER', 'NONE'] as const;
+
+type FormBoolean = boolean | number | string;
+
+function parseFormBoolean(value: FormBoolean): boolean | null {
+  if (value === true || value === 1 || value === 'true' || value === '1') return true;
+  if (value === false || value === 0 || value === 'false' || value === '0') return false;
+  return null;
+}
+
+/** Validate fields with controlled options before persisting an Instructor edit. */
+export function validateExamEditFields(fields: Record<string, unknown>): string | null {
+  if (fields.exam_language !== undefined && !EXAM_LANGUAGE_OPTIONS.includes(fields.exam_language as typeof EXAM_LANGUAGE_OPTIONS[number])) {
+    return 'ภาษาข้อสอบไม่ถูกต้อง';
+  }
+  if (fields.print_format !== undefined && !PRINT_FORMAT_OPTIONS.includes(fields.print_format as typeof PRINT_FORMAT_OPTIONS[number])) {
+    return 'รูปแบบการพิมพ์ไม่ถูกต้อง';
+  }
+  if (fields.requires_answer_sheet !== undefined && parseFormBoolean(fields.requires_answer_sheet as FormBoolean) === null) {
+    return 'ค่ากระดาษคำตอบคอมพิวเตอร์ไม่ถูกต้อง';
+  }
+  if (fields.is_double_sided !== undefined && parseFormBoolean(fields.is_double_sided as FormBoolean) === null) {
+    return 'รูปแบบการพิมพ์สองหน้าไม่ถูกต้อง';
+  }
+  if (fields.print_format !== undefined && fields.is_double_sided !== undefined) {
+    const printFormatIsDoubleSided = fields.print_format === 'DOUBLE_SIDED' || fields.print_format === 'BOOKLET';
+    if (parseFormBoolean(fields.is_double_sided as FormBoolean) !== printFormatIsDoubleSided) {
+      return 'รูปแบบการพิมพ์และการพิมพ์สองหน้าไม่ตรงกัน';
+    }
+  }
+  if (fields.allowed_materials !== undefined && fields.allowed_materials !== null && fields.allowed_materials !== '') {
+    if (typeof fields.allowed_materials !== 'string') return 'รายการอุปกรณ์ที่อนุญาตไม่ถูกต้อง';
+    let materials: unknown;
+    try {
+      materials = JSON.parse(fields.allowed_materials);
+    } catch {
+      return 'รายการอุปกรณ์ที่อนุญาตไม่ถูกต้อง';
+    }
+    if (!Array.isArray(materials) || materials.some((value) => typeof value !== 'string')) {
+      return 'รายการอุปกรณ์ที่อนุญาตไม่ถูกต้อง';
+    }
+    if (new Set(materials).size !== materials.length) return 'รายการอุปกรณ์ที่อนุญาตซ้ำกัน';
+    const hasNone = materials.includes('NONE');
+    const hasSupportedValues = materials.every((value) =>
+      ALLOWED_MATERIAL_OPTIONS.includes(value as typeof ALLOWED_MATERIAL_OPTIONS[number]) ||
+      (value.startsWith('OTHER:') && value.slice(6).trim().length > 0 && value.length <= 256)
+    );
+    if (!hasSupportedValues || (hasNone && materials.length > 1)) return 'รายการอุปกรณ์ที่อนุญาตไม่ถูกต้อง';
+  }
+  if (fields.special_instructions !== undefined && typeof fields.special_instructions !== 'string') {
+    return 'คำอธิบายเพิ่มเติมไม่ถูกต้อง';
+  }
+  return null;
+}
+
 type HistoricalPrintRecord = {
   id: number;
   examId: number;
@@ -733,6 +790,13 @@ router.put('/:id', authenticateToken, uploadExamFile.single('file'), async (req:
       }
     }
 
+    const validationError = validateExamEditFields(req.body);
+    if (validationError) {
+      removeUploadedFile(req.file?.path);
+      res.status(400).json({ success: false, message: validationError });
+      return;
+    }
+
     if (course_id !== undefined) {
       const nextCourse = await prisma.course.findUnique({ where: { id: Number(course_id) } });
       if (!nextCourse || (user.role === UserRole.INSTRUCTOR && nextCourse.instructorId !== user.id)) {
@@ -804,9 +868,10 @@ router.put('/:id', authenticateToken, uploadExamFile.single('file'), async (req:
     const nextNumCopies = num_copies !== undefined ? Number(num_copies) : exam.numCopies;
     const nextStudents = student_count !== undefined ? Number(student_count) : exam.studentCount;
     const nextReserves = reserve_copies !== undefined ? Number(reserve_copies) : exam.reserveCopies;
-    if (!Number.isInteger(nextNumCopies) || nextNumCopies < 1 || !Number.isInteger(nextStudents) || nextStudents < 1 || !Number.isInteger(nextReserves) || nextReserves < 0 || nextReserves > 20) {
+    const nextNumPages = num_pages !== undefined ? Number(num_pages) : exam.numPages;
+    if (!Number.isInteger(nextNumCopies) || nextNumCopies < 1 || !Number.isInteger(nextStudents) || nextStudents < 1 || !Number.isInteger(nextReserves) || nextReserves < 0 || nextReserves > 20 || !Number.isInteger(nextNumPages) || nextNumPages < 1) {
       removeUploadedFile(req.file?.path);
-      res.status(400).json({ success: false, message: 'จำนวนชุดพิมพ์ จำนวนผู้เข้าสอบ หรือจำนวนชุดสำรองไม่ถูกต้อง' });
+      res.status(400).json({ success: false, message: 'จำนวนชุดพิมพ์ จำนวนผู้เข้าสอบ จำนวนชุดสำรอง หรือจำนวนหน้าไม่ถูกต้อง' });
       return;
     }
     if (req.file) {
@@ -826,18 +891,16 @@ router.put('/:id', authenticateToken, uploadExamFile.single('file'), async (req:
       studentCount: student_count !== undefined ? nextStudents : undefined,
       reserveCopies: reserve_copies !== undefined ? nextReserves : undefined,
       section: section !== undefined ? String(section).trim() || null : undefined,
-      numPages: num_pages !== undefined ? Number(num_pages) : undefined,
+      numPages: num_pages !== undefined ? nextNumPages : undefined,
       examLanguage: exam_language !== undefined ? exam_language : undefined,
       printFormat: print_format !== undefined ? print_format : undefined,
       allowedMaterials: allowed_materials !== undefined ? allowed_materials || null : undefined,
       requiresAnswerSheet: requires_answer_sheet !== undefined ? requires_answer_sheet === 'true' || requires_answer_sheet === true : undefined,
       examSessionType: exam_session_type !== undefined ? exam_session_type : undefined,
-      specialInstructions: special_instructions !== undefined ? (special_instructions === '' ? null : special_instructions) : undefined,
+      specialInstructions: special_instructions !== undefined ? (special_instructions.trim() === '' ? null : special_instructions.trim()) : undefined,
       isDoubleSided:
         is_double_sided !== undefined
-          ? is_double_sided === 'false' || is_double_sided === 0 || is_double_sided === false
-            ? false
-            : true
+          ? parseFormBoolean(is_double_sided)!
           : undefined,
       paperSize: paper_size !== undefined ? paper_size : undefined,
       status: newStatus,

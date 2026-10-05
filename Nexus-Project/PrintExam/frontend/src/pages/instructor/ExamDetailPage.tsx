@@ -28,6 +28,46 @@ import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 import { localizedApiError } from '../../api/localizedError';
 
+const EXAM_LANGUAGE_OPTIONS = [
+  { value: 'THAI', label: 'ภาษาไทย' },
+  { value: 'ENGLISH', label: 'ภาษาอังกฤษ' },
+  { value: 'BILINGUAL', label: 'ไทยและอังกฤษ' },
+] as const;
+
+const PRINT_FORMAT_OPTIONS = [
+  { value: 'SINGLE_SIDED', label: 'หน้าเดียว' },
+  { value: 'DOUBLE_SIDED', label: 'หน้า-หลัง' },
+  { value: 'BOOKLET', label: 'แบบเล่ม' },
+  { value: 'OTHER', label: 'รูปแบบอื่น' },
+] as const;
+
+const ALLOWED_MATERIAL_OPTIONS = [
+  { value: 'BOOK', label: 'อนุญาตนำตำราเข้าห้องสอบ' },
+  { value: 'CALCULATOR', label: 'อนุญาตเครื่องคิดเลข' },
+  { value: 'NO_FORMULA_RULER', label: 'ไม่อนุญาตไม้บรรทัดสูตร' },
+  { value: 'NONE', label: 'ไม่มีอุปกรณ์เพิ่มเติม' },
+] as const;
+
+function parseAllowedMaterials(raw?: string): { selected: string[]; other: string; legacy: string[] } {
+  if (!raw) return { selected: [], other: '', legacy: [] };
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.some((value) => typeof value !== 'string')) {
+      return { selected: [], other: '', legacy: [raw] };
+    }
+    const values = parsed as string[];
+    const selected = values.filter((value) => ALLOWED_MATERIAL_OPTIONS.some((option) => option.value === value));
+    const otherValues = values.filter((value) => value.startsWith('OTHER:') && value.slice(6).trim());
+    const other = otherValues[0]?.slice(6) || '';
+    const recognized = new Set([...selected, ...(other ? [otherValues[0]] : [])]);
+    return { selected, other, legacy: values.filter((value) => !recognized.has(value)) };
+  } catch {
+    return { selected: [], other: '', legacy: [raw] };
+  }
+}
+
+const formatIsDoubleSided = (format: string) => format === 'DOUBLE_SIDED' || format === 'BOOKLET';
+
 export const ExamDetailPage: React.FC = () => {
   const { t } = useTranslation("instructor");
 
@@ -42,14 +82,38 @@ export const ExamDetailPage: React.FC = () => {
   // Edit Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editNumCopies, setEditNumCopies] = useState<number>(1);
+  const [editStudentCount, setEditStudentCount] = useState<number>(1);
+  const [editReserveCopies, setEditReserveCopies] = useState<number>(0);
   const [editNumPages, setEditNumPages] = useState<number>(1);
-  const [editDoubleSided, setEditDoubleSided] = useState<boolean>(true);
+  const [editExamLanguage, setEditExamLanguage] = useState<string>('THAI');
+  const [editPrintFormat, setEditPrintFormat] = useState<string>('DOUBLE_SIDED');
+  const [editRequiresAnswerSheet, setEditRequiresAnswerSheet] = useState(false);
+  const [editMaterials, setEditMaterials] = useState<string[]>([]);
+  const [editOtherMaterial, setEditOtherMaterial] = useState('');
+  const [editMaterialsLegacy, setEditMaterialsLegacy] = useState<string[]>([]);
   const [editInstructions, setEditInstructions] = useState<string>('');
+  const [editDirtyFields, setEditDirtyFields] = useState<Set<string>>(new Set());
   const [editFile, setEditFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   // Envelope Label Modal
   const [isEnvelopeOpen, setIsEnvelopeOpen] = useState(false);
+
+  const resetEditForm = (data: Exam) => {
+    setEditNumCopies(data.num_copies > 0 ? data.num_copies : 1);
+    setEditStudentCount(data.student_count && data.student_count > 0 ? data.student_count : 1);
+    setEditReserveCopies(data.reserve_copies ?? 0);
+    setEditNumPages(data.num_pages || 1);
+    setEditExamLanguage(data.exam_language || 'THAI');
+    setEditPrintFormat(data.print_format || (data.is_double_sided ? 'DOUBLE_SIDED' : 'SINGLE_SIDED'));
+    setEditRequiresAnswerSheet(Boolean(data.requires_answer_sheet));
+    const materialValues = parseAllowedMaterials(data.allowed_materials);
+    setEditMaterials(materialValues.selected);
+    setEditOtherMaterial(materialValues.other);
+    setEditMaterialsLegacy(materialValues.legacy);
+    setEditInstructions(data.special_instructions || '');
+    setEditDirtyFields(new Set());
+  };
 
   const fetchExam = async () => {
     if (!id) return;
@@ -57,10 +121,7 @@ export const ExamDetailPage: React.FC = () => {
       setIsLoading(true);
       const data = await examsApi.getExamById(id);
       setExam(data);
-      setEditNumCopies(data.num_copies > 0 ? data.num_copies : 1);
-      setEditNumPages(data.num_pages || 1);
-      setEditDoubleSided(Boolean(data.is_double_sided));
-      setEditInstructions(data.special_instructions || '');
+      resetEditForm(data);
     } catch (err: any) {
       toast.error(t("ไม่สามารถโหลดข้อมูลข้อสอบได้"), localizedApiError(err, t('An unexpected error occurred.')));
     } finally {
@@ -72,6 +133,10 @@ export const ExamDetailPage: React.FC = () => {
     fetchExam();
   }, [id, lastEvent]);
 
+  const markEditFieldChanged = (field: string) => {
+    setEditDirtyFields((current) => new Set(current).add(field));
+  };
+
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id) return;
@@ -79,10 +144,22 @@ export const ExamDetailPage: React.FC = () => {
     setIsSaving(true);
     try {
       const formData = new FormData();
-      formData.append('num_copies', editNumCopies.toString());
-      formData.append('num_pages', editNumPages.toString());
-      formData.append('is_double_sided', editDoubleSided.toString());
-      formData.append('special_instructions', editInstructions);
+      if (editDirtyFields.has('num_copies')) formData.append('num_copies', editNumCopies.toString());
+      if (editDirtyFields.has('student_count')) formData.append('student_count', editStudentCount.toString());
+      if (editDirtyFields.has('reserve_copies')) formData.append('reserve_copies', editReserveCopies.toString());
+      if (editDirtyFields.has('num_pages')) formData.append('num_pages', editNumPages.toString());
+      if (editDirtyFields.has('exam_language')) formData.append('exam_language', editExamLanguage);
+      if (editDirtyFields.has('print_format')) {
+        formData.append('print_format', editPrintFormat);
+        formData.append('is_double_sided', String(formatIsDoubleSided(editPrintFormat)));
+      }
+      if (editDirtyFields.has('requires_answer_sheet')) formData.append('requires_answer_sheet', String(editRequiresAnswerSheet));
+      if (editDirtyFields.has('allowed_materials')) {
+        const nextMaterials = [...editMaterials];
+        if (editOtherMaterial.trim()) nextMaterials.push(`OTHER:${editOtherMaterial.trim()}`);
+        formData.append('allowed_materials', JSON.stringify(nextMaterials));
+      }
+      if (editDirtyFields.has('special_instructions')) formData.append('special_instructions', editInstructions);
       formData.append('is_draft', 'false'); // Mark as resubmitted
       if (editFile) {
         formData.append('file', editFile);
@@ -97,6 +174,22 @@ export const ExamDetailPage: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const openEditModal = () => {
+    if (exam) resetEditForm(exam);
+    setEditFile(null);
+    setIsEditModalOpen(true);
+  };
+
+  const toggleEditMaterial = (value: string) => {
+    if (value === 'NONE' && !editMaterials.includes('NONE')) setEditOtherMaterial('');
+    setEditMaterials((current) => {
+      if (value === 'NONE') return current.includes('NONE') ? [] : ['NONE'];
+      const withoutNone = current.filter((item) => item !== 'NONE');
+      return withoutNone.includes(value) ? withoutNone.filter((item) => item !== value) : [...withoutNone, value];
+    });
+    markEditFieldChanged('allowed_materials');
   };
 
   const handleCancelExam = async () => {
@@ -170,7 +263,7 @@ export const ExamDetailPage: React.FC = () => {
 
           {/* Edit Button */}
           <button
-            onClick={() => setIsEditModalOpen(true)}
+            onClick={openEditModal}
             disabled={!exam.can_edit_or_cancel}
             title={exam.edit_restriction_reason}
             className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
@@ -221,7 +314,7 @@ export const ExamDetailPage: React.FC = () => {
             </p>
           </div>
           <button
-            onClick={() => setIsEditModalOpen(true)}
+            onClick={openEditModal}
             className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-600/20 shrink-0"
           >
 
@@ -339,68 +432,83 @@ export const ExamDetailPage: React.FC = () => {
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         title={t("แก้ไขข้อมูลข้อสอบ")}
+        maxWidth="2xl"
       >
-        <form onSubmit={handleEditSubmit} className="space-y-4 text-xs">
-          <div>
-            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+        <form onSubmit={handleEditSubmit} className="max-h-[calc(100dvh-10rem)] space-y-4 overflow-y-auto px-1 text-sm">
+          <section className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+            <h4 className="mb-3 font-bold text-slate-900 dark:text-white">{t("รายละเอียดการจัดพิมพ์")}</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="font-semibold text-slate-700 dark:text-slate-300">
+                {t("จำนวนชุดที่ต้องการพิมพ์ *")}
+                <input type="number" min={1} value={editNumCopies} onChange={(e) => { setEditNumCopies(Number(e.target.value)); markEditFieldChanged('num_copies'); }} required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+              </label>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">
+                {t("จำนวนผู้เข้าสอบ")}
+                <input type="number" min={1} value={editStudentCount} onChange={(e) => { setEditStudentCount(Number(e.target.value)); markEditFieldChanged('student_count'); }} required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+              </label>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">
+                {t("ชุดสำรอง")}
+                <input type="number" min={0} max={20} value={editReserveCopies} onChange={(e) => { setEditReserveCopies(Number(e.target.value)); markEditFieldChanged('reserve_copies'); }} required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+              </label>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">
+                {t("จำนวนหน้า/ชุด")}
+                <input type="number" min={1} value={editNumPages} onChange={(e) => { setEditNumPages(Number(e.target.value)); markEditFieldChanged('num_pages'); }} required className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+              </label>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">
+                {t("ภาษาข้อสอบ")}
+                <select value={editExamLanguage} onChange={(e) => { setEditExamLanguage(e.target.value); markEditFieldChanged('exam_language'); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                  {!EXAM_LANGUAGE_OPTIONS.some((option) => option.value === editExamLanguage) && <option value={editExamLanguage} disabled>{t("ค่าเดิมที่ไม่อยู่ในรายการ")}</option>}
+                  {EXAM_LANGUAGE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{t(option.label)}</option>)}
+                </select>
+              </label>
+              <label className="font-semibold text-slate-700 dark:text-slate-300">
+                {t("รูปแบบการพิมพ์")}
+                <select value={editPrintFormat} onChange={(e) => { setEditPrintFormat(e.target.value); markEditFieldChanged('print_format'); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                  {!PRINT_FORMAT_OPTIONS.some((option) => option.value === editPrintFormat) && <option value={editPrintFormat} disabled>{t("ค่าเดิมที่ไม่อยู่ในรายการ")}</option>}
+                  {PRINT_FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{t(option.label)}</option>)}
+                </select>
+              </label>
+              <label className="font-semibold text-slate-700 dark:text-slate-300 sm:col-span-2">
+                {t("กระดาษคำตอบคอมพิวเตอร์")}
+                <select value={editRequiresAnswerSheet ? 'yes' : 'no'} onChange={(e) => { setEditRequiresAnswerSheet(e.target.value === 'yes'); markEditFieldChanged('requires_answer_sheet'); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                  <option value="no">{t("ไม่ใช้")}</option>
+                  <option value="yes">{t("ใช้")}</option>
+                </select>
+              </label>
+              {exam.section && <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300 sm:col-span-2"><span className="font-semibold">{t("ตอน")}: </span>{exam.section}<span className="ml-2 text-slate-500 dark:text-slate-400">{t("เป็นข้อมูลอ้างอิงจากข้อสอบหรือตารางสอบ")}</span></div>}
+            </div>
+          </section>
 
-              {t("จำนวนชุดที่ต้องการพิมพ์ *")}
+          <section className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+            <h4 className="mb-3 font-bold text-slate-900 dark:text-white">{t("วัสดุและคำแนะนำ")}</h4>
+            <fieldset>
+              <legend className="mb-2 font-semibold text-slate-700 dark:text-slate-300">{t("อุปกรณ์/คำแนะนำสำหรับผู้คุมสอบ")}</legend>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {ALLOWED_MATERIAL_OPTIONS.map((option) => <label key={option.value} className="flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-slate-700 dark:border-slate-700 dark:text-slate-200"><input type="checkbox" checked={editMaterials.includes(option.value)} onChange={() => toggleEditMaterial(option.value)} className="accent-brand-600" />{t(option.label)}</label>)}
+              </div>
+              <label className="mt-3 block font-semibold text-slate-700 dark:text-slate-300">
+                {t("อื่น ๆ โปรดระบุ")}
+                <input value={editOtherMaterial} onChange={(e) => { const value = e.target.value; setEditOtherMaterial(value); if (value.trim()) setEditMaterials((current) => current.filter((item) => item !== 'NONE')); markEditFieldChanged('allowed_materials'); }} maxLength={250} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+              </label>
+              {editMaterialsLegacy.length > 0 && <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"><div>{t("มีค่าอุปกรณ์เดิมที่ไม่อยู่ในรายการ และจะคงไว้หากไม่แก้ไข")}</div><ul className="mt-1 list-inside list-disc">{editMaterialsLegacy.map((value, index) => <li key={`${index}-${value}`}>{value}</li>)}</ul></div>}
+            </fieldset>
+            <label className="mt-4 block font-semibold text-slate-700 dark:text-slate-300">
+              {t("คำอธิบายเพิ่มเติม")}
+              <textarea rows={3} value={editInstructions} onChange={(e) => { setEditInstructions(e.target.value); markEditFieldChanged('special_instructions'); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
             </label>
-            <input
-              type="number"
-              min="1"
-              value={editNumCopies}
-              onChange={(e) => setEditNumCopies(Number(e.target.value))}
-              required
-              className="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2"
-            />
-          </div>
+          </section>
 
-          <div>
-            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-
-              {t("จำนวนหน้าต่อชุด")}
-            </label>
-            <input
-              type="number"
-              min="1"
-              value={editNumPages}
-              onChange={(e) => setEditNumPages(Number(e.target.value))}
-              className="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2"
-            />
-          </div>
-
-          <div>
-            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-
-              {t("คำสั่งพิเศษ")}
-            </label>
-            <textarea
-              rows={2}
-              value={editInstructions}
-              onChange={(e) => setEditInstructions(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5"
-            />
-          </div>
-
-          <div>
-            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-
+          <section className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+            <h4 className="mb-3 font-bold text-slate-900 dark:text-white">{t("ไฟล์ข้อสอบ")}</h4>
+            <div className="text-xs text-slate-600 dark:text-slate-300"><span className="font-semibold">{t("ไฟล์ปัจจุบัน:")}</span> {exam.original_filename || (exam.file_url ? t("ไฟล์ข้อสอบ") : t("ไม่มีไฟล์"))}</div>
+            <label className="mt-3 block font-semibold text-slate-700 dark:text-slate-300">
               {t("อัปโหลดไฟล์ใหม่ (ถ้าต้องการเปลี่ยนไฟล์ .docx / .pdf)")}
+              <input type="file" accept=".pdf,.doc,.docx" onChange={(e) => setEditFile(e.target.files?.[0] || null)} className="mt-1 block w-full text-xs text-slate-600 dark:text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:font-semibold file:text-brand-700 hover:file:bg-brand-100 dark:file:bg-brand-950 dark:file:text-brand-200" />
             </label>
-            <input
-              type="file"
-              accept=".pdf,.docx,.doc"
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  setEditFile(e.target.files[0]);
-                }
-              }}
-              className="block w-full text-xs text-slate-500 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
-            />
-          </div>
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{t("รองรับ PDF, DOC และ DOCX ระบบจะตรวจชนิดไฟล์จริงก่อนรับเอกสาร")}</p>
+          </section>
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
             <button
               type="button"
               onClick={() => setIsEditModalOpen(false)}

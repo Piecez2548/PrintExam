@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer, request as httpRequest, type Server } from 'node:http';
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 process.env.JWT_SECRET ||= 'test-only-secret-that-is-long-enough-for-local-tests';
@@ -329,11 +332,99 @@ test('exam edit changing copies and student count records exactly both persisted
 
 test('blank optional instructions normalize to null and do not create a phantom audit event', async (t) => {
   const state = await setupExamUpdate(t);
-  const response = await updateExam(state.server, state.token, { special_instructions: '' });
+  const response = await updateExam(state.server, state.token, { special_instructions: '   ' });
 
   assert.equal(response.status, 200);
   assert.equal(state.persisted.specialInstructions, null);
   assert.equal(state.audits.length, 0);
+});
+
+test('editing only page count preserves other exam fields and the existing file when no replacement is selected', async (t) => {
+  const state = await setupExamUpdate(t);
+  const response = await updateExam(state.server, state.token, { num_pages: '7' });
+
+  assert.equal(response.status, 200);
+  assert.equal(state.persisted.numPages, 7);
+  assert.equal(state.persisted.numCopies, 2);
+  assert.equal(state.persisted.studentCount, 1);
+  assert.equal(state.persisted.reserveCopies, 1);
+  assert.equal(state.persisted.fileUrl, '/uploads/existing.pdf');
+  assert.equal(state.persisted.originalFilename, 'existing.pdf');
+  assert.deepEqual(JSON.parse(state.audits[0].detailJson).changes, {
+    num_pages: { before: 2, after: 7 },
+  });
+});
+
+test('controlled exam options persist together in one audit event and use the authenticated actor', async (t) => {
+  const state = await setupExamUpdate(t);
+  const response = await updateExam(state.server, state.token, {
+    exam_language: 'ENGLISH',
+    print_format: 'SINGLE_SIDED',
+    is_double_sided: 'false',
+    allowed_materials: JSON.stringify(['CALCULATOR', 'OTHER:Graphing calculator']),
+    requires_answer_sheet: 'true',
+    user_id: '999',
+    actor_name: 'Spoofed Actor',
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(state.persisted.examLanguage, 'ENGLISH');
+  assert.equal(state.persisted.printFormat, 'SINGLE_SIDED');
+  assert.equal(state.persisted.isDoubleSided, false);
+  assert.equal(state.persisted.allowedMaterials, JSON.stringify(['CALCULATOR', 'OTHER:Graphing calculator']));
+  assert.equal(state.persisted.requiresAnswerSheet, true);
+  assert.equal(state.audits.length, 1);
+  assert.equal(state.audits[0].userId, state.instructor.id);
+  assert.equal(state.audits[0].userName, state.instructor.fullName);
+  assert.equal(state.audits[0].userRole, 'INSTRUCTOR');
+  assert.deepEqual(Object.keys(JSON.parse(state.audits[0].detailJson).changes).sort(), [
+    'allowed_materials', 'exam_language', 'is_double_sided', 'print_format', 'requires_answer_sheet',
+  ]);
+  assert.doesNotMatch(state.audits[0].detailJson, /Spoofed Actor|999/);
+});
+
+test('unsupported controlled exam values are rejected without changing the record', async (t) => {
+  const invalidCases: Array<Record<string, string>> = [
+    { exam_language: 'THAI;DROP' },
+    { print_format: 'INVALID_FORMAT' },
+    { print_format: 'BOOKLET', is_double_sided: 'false' },
+    { allowed_materials: JSON.stringify(['UNLISTED_MATERIAL']) },
+    { allowed_materials: JSON.stringify(['NONE', 'BOOK']) },
+    { requires_answer_sheet: 'yes' },
+  ];
+
+  for (const invalidFields of invalidCases) {
+    const state = await setupExamUpdate(t);
+    const response = await updateExam(state.server, state.token, invalidFields);
+    assert.equal(response.status, 400);
+    assert.equal(state.persisted.examLanguage, 'THAI');
+    assert.equal(state.persisted.printFormat, 'DOUBLE_SIDED');
+    assert.equal(state.persisted.allowedMaterials, null);
+    assert.equal(state.audits.length, 0);
+  }
+});
+
+test('no-op edit of a submitted exam does not create an audit event', async (t) => {
+  const state = await setupExamUpdate(t);
+  state.persisted.status = 'SUBMITTED';
+  const response = await updateExam(state.server, state.token, {});
+
+  assert.equal(response.status, 200);
+  assert.equal(state.persisted.status, 'SUBMITTED');
+  assert.equal(state.audits.length, 0);
+});
+
+test('replacement file still requires valid PDF magic bytes', async (t) => {
+  const { validateUploadedFileMagic } = await import('../middleware/upload');
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'printexam-edit-file-test-'));
+  t.after(() => rm(tempDir, { recursive: true, force: true }));
+  const validPdf = path.join(tempDir, 'replacement.pdf');
+  const fakePdf = path.join(tempDir, 'fake.pdf');
+  await writeFile(validPdf, Buffer.from('%PDF-1.7\nvalid test fixture', 'ascii'));
+  await writeFile(fakePdf, Buffer.from('<html>not a PDF</html>', 'ascii'));
+
+  assert.equal(await validateUploadedFileMagic(validPdf), true);
+  assert.equal(await validateUploadedFileMagic(fakePdf), false);
 });
 
 test('audit comparison suppresses equivalent empty optional values but preserves meaningful empty values elsewhere', async () => {

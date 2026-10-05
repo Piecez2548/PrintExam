@@ -107,6 +107,23 @@ export function formatAuditValue(
   }
 
   const text = String(value);
+  if (field === 'allowed_materials') {
+    try {
+      const materials: unknown = JSON.parse(text);
+      if (Array.isArray(materials) && materials.every((material) => typeof material === 'string')) {
+        if (materials.length === 0) {
+          return translatedOrFallback(t, 'audit.valueNotSet', language === 'en' ? 'Not specified' : 'ไม่ได้ระบุ');
+        }
+        return materials.map((material: string) => {
+          if (material.startsWith('OTHER:')) return material.slice(6).trim();
+          const fallback = material.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (letter: string) => letter.toUpperCase());
+          return translatedOrFallback(t, `audit.values.allowed_materials.${material}`, fallback);
+        }).join(', ');
+      }
+    } catch {
+      // Preserve readable legacy values that were not stored as JSON.
+    }
+  }
   if (field && /^[A-Z][A-Z0-9_]*$/.test(text)) {
     const enumKey = `audit.values.${FIELD_ALIASES[field] || field}.${text}`;
     const humanized = text.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (letter: string) => letter.toUpperCase());

@@ -84,6 +84,9 @@ test('all backend audit fields have localized labels and no literal translation 
 test('enum values and missing translations do not expose raw audit keys or enum names', async () => {
   const th = await makeTranslator('th');
   assert.equal(formatAuditValue('FINAL', th, 'th', 'exam_type'), 'สอบปลายภาค');
+  assert.equal(formatAuditValue('["BOOK","OTHER:เครื่องคิดเลขกราฟิก"]', th, 'th', 'allowed_materials'), 'อนุญาตนำตำราเข้าห้องสอบ, เครื่องคิดเลขกราฟิก');
+  const en = await makeTranslator('en');
+  assert.equal(formatAuditValue('["NONE"]', en, 'en', 'allowed_materials'), 'No additional materials');
   assert.equal(getAuditFieldLabel('unknown_internal_field', th, 'th'), 'ข้อมูลอื่น');
   assert.equal(getAuditTitle('UNKNOWN', th, 'th'), 'แก้ไขข้อมูล');
 });
