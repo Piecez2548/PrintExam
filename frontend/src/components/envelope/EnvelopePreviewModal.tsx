@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Modal } from '../common/Modal';
 import { Exam } from '../../types';
 import { Printer, Download } from 'lucide-react';
@@ -53,7 +54,80 @@ export const EnvelopePreviewModal: React.FC<EnvelopePreviewModalProps> = ({
   const lineClass = 'inline-block min-h-5 border-b border-dotted border-slate-700 px-2 font-semibold';
   const mark = (selected: boolean) => selected ? '( / )' : '(   )';
 
+  const renderCoverSheet = (isPrintRoot: boolean) => (
+      <div
+        id={isPrintRoot ? 'printable-envelope' : undefined}
+        className="border-2 border-slate-900 bg-white p-6 text-[13px] text-slate-900 shadow-md"
+      >
+        <div className="mb-5 text-center">
+          <img src="/images/psu-official-logo.png" alt={t("ตรามหาวิทยาลัยสงขลานครินทร์")} className="mx-auto h-20 w-auto object-contain" />
+          <div className="mt-1 text-lg font-extrabold">{cover.department}</div>
+          <div className="text-base font-bold">{t("มหาวิทยาลัยสงขลานครินทร์")}</div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="print-cover-grid-course grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_11rem]">
+            <span>{t("การสอบวิชา")}</span><span className={lineClass}>{cover.courseName}</span>
+            <span>{t("รหัสวิชา")}</span><span className={lineClass}>{cover.courseCode}</span>
+          </div>
+          <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
+            <span>{t("สอบวันที่")}</span><span className={`${lineClass} w-14 text-center`}>{cover.examDay}</span>
+            <span>{t("เดือน")}</span><span className={`${lineClass} w-28 text-center`}>{cover.examMonth}</span>
+            <span>{t("พ.ศ.")}</span><span className={`${lineClass} w-16 text-center`}>{cover.examYear}</span>
+            <span>{t("เวลา")}</span><span className={`${lineClass} min-w-40 text-center`}>{cover.examTime === '-' ? '-' : `${cover.examTime} ${t("น.")}`}</span>
+          </div>
+          <div className="print-cover-grid-details grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_1fr]">
+            <span>{t("ห้องสอบ")}</span><span className={lineClass}>{cover.examRoom}</span>
+            <span>{t("เลขประจำซอง")}</span><span className={lineClass}>{cover.envelopeIdentifier}</span>
+          </div>
+          <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
+            <span>{t("จำนวนนักศึกษา")}</span><span className={`${lineClass} w-16 text-center`}>{cover.studentCount}</span><span>{t("คน")}</span>
+          </div>
+          <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
+            <span>{t("นศ.คณะ")}</span><span className={`${lineClass} min-w-52`}>{cover.department}</span>
+            <span>{t("ตอน")}</span><span className={`${lineClass} w-20 text-center`}>{cover.section}</span>
+            <span className="ml-4">{t("ซองนี้มีข้อสอบ")}</span><span className={`${lineClass} w-16 text-center`}>{cover.examCopyCount}</span><span>{t("ชุด")}</span>
+          </div>
+          <div className="flex items-end gap-2">
+            <span>{t("ข้อสอบสำรอง")}</span><span className={`${lineClass} w-14 text-center`}>{cover.reserveCopyCount}</span><span>{t("ชุด")}</span>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <div className="text-center text-sm font-extrabold">{t("อุปกรณ์ที่ใช้หรือคำแนะนำผู้คุมสอบเพิ่มเติม")}</div>
+          <div className="print-cover-grid-options mt-3 grid gap-x-8 gap-y-2 md:grid-cols-2">
+            <div>{mark(cover.permittedBooks)}  {t("นำตำราเข้าห้องสอบได้")}</div><div>{mark(Boolean(cover.specialInstructions))} {cover.specialInstructions || <span className="inline-block w-4/5 border-b border-dotted border-slate-600">&nbsp;</span>}</div>
+            <div>{mark(cover.permittedCalculator)}  {t("นำเครื่องคิดเลขเข้าห้องสอบได้")}</div><div>( &nbsp; ) <span className="inline-block w-4/5 border-b border-dotted border-slate-600">&nbsp;</span></div>
+            <div>{mark(cover.prohibitsFormulaRuler)}  {t("ห้ามนำไม้บรรทัดมีสูตรคณิตศาสตร์เข้าห้องสอบ")}</div><div>( &nbsp; ) <span className="inline-block w-4/5 border-b border-dotted border-slate-600">&nbsp;</span></div>
+          </div>
+          <div className="mt-4 grid grid-cols-[auto_1fr] gap-2">
+            <span>{t("ผู้ออกข้อสอบ")}</span><span className={lineClass}>{cover.instructorName}</span>
+          </div>
+          <div className="print-cover-grid-details mt-3 grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_1fr]">
+            <span>{t("ห้องทำงาน")}</span><span className={lineClass}>{cover.officeRoom === '-' ? '' : cover.officeRoom}</span>
+            <span>{t("โทรศัพท์/มือถือ")}</span><span className={lineClass}>{cover.instructorPhone === '-' ? '' : cover.instructorPhone}</span>
+          </div>
+        </div>
+
+        <div className="mt-5 border border-slate-900 p-4">
+          <div className="flex flex-wrap gap-x-8 gap-y-2">
+            <div>{t("จำนวนนักศึกษาที่เข้าสอบ")} <span className="inline-block w-20 border-b border-dotted border-slate-700">&nbsp;</span>  {t("คน")}</div>
+            <div>{t("จำนวนนักศึกษาที่ขาดสอบ")} <span className="inline-block w-20 border-b border-dotted border-slate-700">&nbsp;</span>  {t("คน คือ")}</div>
+          </div>
+          <div className="mt-3 grid grid-cols-[2rem_9rem_1fr] border-b border-slate-500 pb-1 text-center font-bold"><span></span><span>{t("รหัส")}</span><span>{t("ชื่อ-สกุล")}</span></div>
+          {[1, 2, 3].map((number) => (
+            <div key={number} className="grid grid-cols-[2rem_9rem_1fr] items-end py-2"><span>{number}.</span><span className="border-b border-dotted border-slate-600">&nbsp;</span><span className="ml-4 border-b border-dotted border-slate-600">&nbsp;</span></div>
+          ))}
+          <div className="mx-auto mt-4 max-w-md space-y-3">
+            {[1, 2, 3].map((number) => <div key={number} className="flex items-end gap-2"><span>{number}.</span><span className="flex-1 border-b border-dotted border-slate-600">&nbsp;</span><span>{t("ผู้คุมสอบ")}</span></div>)}
+          </div>
+          <div className="mt-4">{t("หมายเหตุ")} <span className="inline-block w-[85%] border-b border-dotted border-slate-600">&nbsp;</span></div>
+        </div>
+      </div>
+  );
+
   return (
+    <>
     <Modal
       isOpen={isOpen}
       onClose={onClose}
@@ -93,77 +167,16 @@ export const EnvelopePreviewModal: React.FC<EnvelopePreviewModalProps> = ({
           </div>
         )}
 
-        {/* Printable Envelope Layout - follows the faculty's original envelope form */}
-        <div
-          id="printable-envelope"
-          className="border-2 border-slate-900 bg-white p-6 text-[13px] text-slate-900 shadow-md"
-        >
-          <div className="mb-5 text-center">
-            <img src="/images/psu-official-logo.png" alt={t("ตรามหาวิทยาลัยสงขลานครินทร์")} className="mx-auto h-20 w-auto object-contain" />
-            <div className="mt-1 text-lg font-extrabold">{cover.department}</div>
-            <div className="text-base font-bold">{t("มหาวิทยาลัยสงขลานครินทร์")}</div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="print-cover-grid-course grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_11rem]">
-              <span>{t("การสอบวิชา")}</span><span className={lineClass}>{cover.courseName}</span>
-              <span>{t("รหัสวิชา")}</span><span className={lineClass}>{cover.courseCode}</span>
-            </div>
-            <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
-              <span>{t("สอบวันที่")}</span><span className={`${lineClass} w-14 text-center`}>{cover.examDay}</span>
-              <span>{t("เดือน")}</span><span className={`${lineClass} w-28 text-center`}>{cover.examMonth}</span>
-              <span>{t("พ.ศ.")}</span><span className={`${lineClass} w-16 text-center`}>{cover.examYear}</span>
-              <span>{t("เวลา")}</span><span className={`${lineClass} min-w-40 text-center`}>{cover.examTime === '-' ? '-' : `${cover.examTime} ${t("น.")}`}</span>
-            </div>
-            <div className="print-cover-grid-details grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_1fr]">
-              <span>{t("ห้องสอบ")}</span><span className={lineClass}>{cover.examRoom}</span>
-              <span>{t("เลขประจำซอง")}</span><span className={lineClass}>{cover.envelopeIdentifier}</span>
-            </div>
-            <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
-              <span>{t("จำนวนนักศึกษา")}</span><span className={`${lineClass} w-16 text-center`}>{cover.studentCount}</span><span>{t("คน")}</span>
-            </div>
-            <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
-              <span>{t("นศ.คณะ")}</span><span className={`${lineClass} min-w-52`}>{cover.department}</span>
-              <span>{t("ตอน")}</span><span className={`${lineClass} w-20 text-center`}>{cover.section}</span>
-              <span className="ml-4">{t("ซองนี้มีข้อสอบ")}</span><span className={`${lineClass} w-16 text-center`}>{cover.examCopyCount}</span><span>{t("ชุด")}</span>
-            </div>
-            <div className="flex items-end gap-2">
-              <span>{t("ข้อสอบสำรอง")}</span><span className={`${lineClass} w-14 text-center`}>{cover.reserveCopyCount}</span><span>{t("ชุด")}</span>
-            </div>
-          </div>
-
-          <div className="mt-6">
-            <div className="text-center text-sm font-extrabold">{t("อุปกรณ์ที่ใช้หรือคำแนะนำผู้คุมสอบเพิ่มเติม")}</div>
-            <div className="print-cover-grid-options mt-3 grid gap-x-8 gap-y-2 md:grid-cols-2">
-              <div>{mark(cover.permittedBooks)}  {t("นำตำราเข้าห้องสอบได้")}</div><div>{mark(Boolean(cover.specialInstructions))} {cover.specialInstructions || <span className="inline-block w-4/5 border-b border-dotted border-slate-600">&nbsp;</span>}</div>
-              <div>{mark(cover.permittedCalculator)}  {t("นำเครื่องคิดเลขเข้าห้องสอบได้")}</div><div>( &nbsp; ) <span className="inline-block w-4/5 border-b border-dotted border-slate-600">&nbsp;</span></div>
-              <div>{mark(cover.prohibitsFormulaRuler)}  {t("ห้ามนำไม้บรรทัดมีสูตรคณิตศาสตร์เข้าห้องสอบ")}</div><div>( &nbsp; ) <span className="inline-block w-4/5 border-b border-dotted border-slate-600">&nbsp;</span></div>
-            </div>
-            <div className="mt-4 grid grid-cols-[auto_1fr] gap-2">
-              <span>{t("ผู้ออกข้อสอบ")}</span><span className={lineClass}>{cover.instructorName}</span>
-            </div>
-            <div className="print-cover-grid-details mt-3 grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_1fr]">
-              <span>{t("ห้องทำงาน")}</span><span className={lineClass}>{cover.officeRoom === '-' ? '' : cover.officeRoom}</span>
-              <span>{t("โทรศัพท์/มือถือ")}</span><span className={lineClass}>{cover.instructorPhone === '-' ? '' : cover.instructorPhone}</span>
-            </div>
-          </div>
-
-          <div className="mt-5 border border-slate-900 p-4">
-            <div className="flex flex-wrap gap-x-8 gap-y-2">
-              <div>{t("จำนวนนักศึกษาที่เข้าสอบ")} <span className="inline-block w-20 border-b border-dotted border-slate-700">&nbsp;</span>  {t("คน")}</div>
-              <div>{t("จำนวนนักศึกษาที่ขาดสอบ")} <span className="inline-block w-20 border-b border-dotted border-slate-700">&nbsp;</span>  {t("คน คือ")}</div>
-            </div>
-            <div className="mt-3 grid grid-cols-[2rem_9rem_1fr] border-b border-slate-500 pb-1 text-center font-bold"><span></span><span>{t("รหัส")}</span><span>{t("ชื่อ-สกุล")}</span></div>
-            {[1, 2, 3].map((number) => (
-              <div key={number} className="grid grid-cols-[2rem_9rem_1fr] items-end py-2"><span>{number}.</span><span className="border-b border-dotted border-slate-600">&nbsp;</span><span className="ml-4 border-b border-dotted border-slate-600">&nbsp;</span></div>
-            ))}
-            <div className="mx-auto mt-4 max-w-md space-y-3">
-              {[1, 2, 3].map((number) => <div key={number} className="flex items-end gap-2"><span>{number}.</span><span className="flex-1 border-b border-dotted border-slate-600">&nbsp;</span><span>{t("ผู้คุมสอบ")}</span></div>)}
-            </div>
-            <div className="mt-4">{t("หมายเหตุ")} <span className="inline-block w-[85%] border-b border-dotted border-slate-600">&nbsp;</span></div>
-          </div>
-        </div>
+        {/* Screen preview uses the same cover markup as the dedicated print root. */}
+        {renderCoverSheet(false)}
       </div>
     </Modal>
+      {isOpen && createPortal(
+        <div className="envelope-print-root" aria-hidden="true">
+          {renderCoverSheet(true)}
+        </div>,
+        document.body
+      )}
+    </>
   );
 };

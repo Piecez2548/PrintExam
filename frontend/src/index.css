@@ -56,7 +56,7 @@ html.dark {
   background: rgb(var(--color-text-muted));
 }
 
-/* Keep browser printing scoped to the same envelope DOM shown in the preview. */
+/* Keep browser printing scoped to a body-level root independent of modal layout. */
 @page {
   size: A4 portrait;
   margin: 5mm;
@@ -74,19 +74,18 @@ html.dark {
     background: #fff !important;
   }
 
-  /* Remove non-cover UI, and collapse modal/application ancestors so their
-     flex centering, viewport height, transforms and overflow cannot offset it. */
-  body *:not(#printable-envelope):not(#printable-envelope *):not(:has(#printable-envelope)) {
+  /* The print portal is a direct child of body, so hiding the app cannot
+     retain modal, shell, viewport-height, or scroll-container layout. */
+  body > :not(.envelope-print-root) {
     display: none !important;
-    visibility: hidden !important;
   }
 
-  #root:has(#printable-envelope),
-  #root *:has(#printable-envelope) {
-    display: contents !important;
+  .envelope-print-root {
+    display: block !important;
+    visibility: visible !important;
     position: static !important;
     inset: auto !important;
-    width: auto !important;
+    width: 100% !important;
     height: auto !important;
     min-height: 0 !important;
     max-height: none !important;
@@ -103,7 +102,7 @@ html.dark {
     display: block !important;
     position: static !important;
     inset: auto !important;
-    width: 100%;
+    width: 100% !important;
     max-width: none !important;
     height: auto !important;
     min-height: 0 !important;
@@ -115,7 +114,7 @@ html.dark {
     color: #000 !important;
     color-scheme: light !important;
     box-shadow: none !important;
-    break-inside: avoid !important;
+    break-inside: avoid-page !important;
     page-break-inside: avoid !important;
   }
 
