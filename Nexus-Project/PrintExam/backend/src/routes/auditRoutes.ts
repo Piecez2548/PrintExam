@@ -51,6 +51,7 @@ router.get('/', authenticateToken, requireRole(UserRole.ADMIN), async (req: Auth
     const [logs, totalCount] = await Promise.all([
       prisma.auditLog.findMany({
         where,
+        include: { user: { select: { deletedAt: true } } },
         orderBy: { createdAt: 'desc' },
         take: pageLimit,
         skip: pageOffset,
@@ -63,6 +64,7 @@ router.get('/', authenticateToken, requireRole(UserRole.ADMIN), async (req: Auth
       user_id: l.userId,
       user_name: l.userName,
       user_role: l.userRole,
+      actor_deleted: Boolean(l.user?.deletedAt),
       action: l.action,
       entity_type: l.entityType,
       entity_id: l.entityId,

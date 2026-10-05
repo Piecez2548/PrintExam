@@ -21,8 +21,8 @@ router.post(
     const examId = Number(id);
 
     try {
-      const exam = await prisma.exam.findUnique({
-        where: { id: examId },
+      const exam = await prisma.exam.findFirst({
+        where: { id: examId, deletedAt: null },
         include: {
           course: true,
           schedule: true,
@@ -45,7 +45,7 @@ router.post(
       const safePickupLocation = String(pickup_location || 'ศูนย์พิมพ์/หน่วยโสต').trim().slice(0, 200);
       const safeNotes = notes ? String(notes).trim().slice(0, 1000) : '';
       await prisma.$transaction([
-        prisma.exam.update({ where: { id: examId }, data: { status: newStatus } }),
+        prisma.exam.update({ where: { id: examId, deletedAt: null }, data: { status: newStatus } }),
         prisma.examStatusHistory.create({
           data: {
             examId,
@@ -108,8 +108,8 @@ router.post(
     const examId = Number(id);
 
     try {
-      const exam = await prisma.exam.findUnique({
-        where: { id: examId },
+      const exam = await prisma.exam.findFirst({
+        where: { id: examId, deletedAt: null },
         include: {
           course: true,
         },
@@ -163,7 +163,7 @@ router.post(
             receiverSignatureNote: signatureNote,
           },
         }),
-        prisma.exam.update({ where: { id: examId }, data: { status: newStatus } }),
+        prisma.exam.update({ where: { id: examId, deletedAt: null }, data: { status: newStatus } }),
         prisma.examStatusHistory.create({
           data: {
             examId,

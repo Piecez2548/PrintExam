@@ -120,6 +120,7 @@ async function setupExamUpdate(t: import('node:test').TestContext) {
   const tx = {
     exam: {
       findUnique: async () => ({ ...persisted }),
+      findFirst: async () => ({ ...persisted }),
       update: async ({ data }: AnyRecord) => {
         for (const [key, value] of Object.entries(data)) if (value !== undefined) persisted[key] = value;
         return { ...persisted };
@@ -130,9 +131,11 @@ async function setupExamUpdate(t: import('node:test').TestContext) {
   };
   const restoreUser = stubMethod(prisma.user, 'findUnique', async () => instructor);
   const restoreExam = stubMethod(prisma.exam, 'findUnique', async () => ({ ...persisted }));
+  const restoreExamFirst = stubMethod(prisma.exam, 'findFirst', async () => ({ ...persisted }));
   const restoreTransaction = stubMethod(prisma, '$transaction', async (operation: any) => operation(tx));
   t.after(restoreUser);
   t.after(restoreExam);
+  t.after(restoreExamFirst);
   t.after(restoreTransaction);
 
   const app = express();
@@ -192,6 +195,28 @@ test('historical paper_type values remain readable exactly as stored', async () 
     });
     assert.equal(record.paper_type, paperType);
   }
+});
+
+test('soft-deleted exam response withholds the file URL while preserving historical print actor state', async () => {
+  const { formatExam, formatHistoricalPrintRecord } = await import('./examRoutes');
+  const deletedAt = new Date('2026-10-05T12:00:00.000Z');
+  const exam = formatExam({ id: 41, deletedAt, fileUrl: '/uploads/private-exam.pdf' });
+  const printRecord = formatHistoricalPrintRecord({
+    id: 8,
+    examId: 41,
+    printedById: 17,
+    printedBy: { fullName: 'Former AV Operator', deletedAt },
+    printedCopies: 12,
+    paperType: 'A4 80gsm หน้า-หลัง',
+    printedAt: deletedAt,
+    notes: null,
+  });
+
+  assert.equal(exam.deleted_at, deletedAt.toISOString());
+  assert.equal(exam.file_url, null);
+  assert.equal(printRecord.paper_type, 'A4 80gsm หน้า-หลัง');
+  assert.equal(printRecord.printer_name, 'Former AV Operator');
+  assert.equal(printRecord.printer_deleted, true);
 });
 
 test('exam response exposes the authoritative course department for cover sheets', async () => {
@@ -498,9 +523,11 @@ test('exam detail refetch returns persisted audit events newest first with authe
   let auditReads = 0;
   const restoreUser = stubMethod(prisma.user, 'findUnique', async () => instructor);
   const restoreExam = stubMethod(prisma.exam, 'findUnique', async () => exam);
+  const restoreExamFirst = stubMethod(prisma.exam, 'findFirst', async () => exam);
   const restoreAudit = stubMethod(prisma.auditLog, 'findMany', async () => { auditReads += 1; return [persistedEdit]; });
   t.after(restoreUser);
   t.after(restoreExam);
+  t.after(restoreExamFirst);
   t.after(restoreAudit);
 
   const app = express();

@@ -124,7 +124,7 @@ export const ExamReviewPage: React.FC = () => {
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
 
-              {t("วิชา")} {exam.course_code} - {exam.course_name}  {t("(ส่งโดย:")} {exam.instructor_name})
+              {t("วิชา")} {exam.course_code} - {exam.course_name}  {t("(ส่งโดย:")} {exam.instructor_name}{exam.instructor_deleted ? ` (${t('บัญชีถูกลบ', { ns: 'common' })})` : ''})
             </p>
           </div>
         </div>
@@ -292,7 +292,7 @@ export const ExamReviewPage: React.FC = () => {
         <form onSubmit={handleReject} className="space-y-4 text-xs">
           <div className="bg-amber-50 dark:bg-amber-950/40 p-3 rounded-xl border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
 
-            {t("ระบบจะส่งข้อความแจ้งเตือนให้อาจารย์ผู้สอน (")}<strong>{exam.instructor_name}</strong>{t(") ทันที เพื่อให้อาจารย์แก้ไขไฟล์และส่งใหม่")}
+              {t("ระบบจะส่งข้อความแจ้งเตือนให้อาจารย์ผู้สอน (")}<strong>{exam.instructor_name}{exam.instructor_deleted ? ` (${t('บัญชีถูกลบ', { ns: 'common' })})` : ''}</strong>{t(") ทันที เพื่อให้อาจารย์แก้ไขไฟล์และส่งใหม่")}
           </div>
 
           <div>

@@ -174,11 +174,7 @@ export const UserManagementPage: React.FC = () => {
       setUserToDelete(null);
       fetchUsers();
     } catch (err: any) {
-      if (err?.response?.data?.code === 'USER_HAS_RETAINED_HISTORY') {
-        toast.error(t('ไม่สามารถลบบัญชีนี้ได้ เนื่องจากมีประวัติการใช้งานหรือข้อมูลในกระบวนการสอบที่ต้องเก็บรักษา'));
-      } else {
-        toast.error(t("ไม่สามารถลบบัญชีได้"), localizedApiError(err, t('An unexpected error occurred.')));
-      }
+      toast.error(t("ไม่สามารถลบบัญชีได้"), localizedApiError(err, t('An unexpected error occurred.')));
     } finally {
       setIsDeleting(false);
     }

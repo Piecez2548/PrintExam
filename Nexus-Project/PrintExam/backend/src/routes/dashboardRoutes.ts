@@ -22,7 +22,7 @@ router.get('/summary', authenticateToken, async (req: AuthRequest, res: Response
     // 1. Overall counts by status. The overview is intentionally system-wide
     // and identical for every authenticated role; role-specific work remains
     // in each role's dedicated operational pages.
-    const countWhere: Prisma.ExamWhereInput = { status: { not: ExamStatus.CANCELLED } };
+    const countWhere: Prisma.ExamWhereInput = { deletedAt: null, status: { not: ExamStatus.CANCELLED } };
 
     const rawCounts = await prisma.exam.groupBy({
       by: ['status'],
@@ -54,7 +54,7 @@ router.get('/summary', authenticateToken, async (req: AuthRequest, res: Response
     statusCounts.TOTAL = total;
 
     // 2. Filtered Detailed Table Query (REQ-0014)
-    const listWhere: Prisma.ExamWhereInput = { status: { not: ExamStatus.CANCELLED } };
+    const listWhere: Prisma.ExamWhereInput = { deletedAt: null, status: { not: ExamStatus.CANCELLED } };
     const courseFilter: Prisma.CourseWhereInput = {};
     const scheduleFilter: Prisma.ExamScheduleWhereInput = {};
 
@@ -135,6 +135,7 @@ router.get('/summary', authenticateToken, async (req: AuthRequest, res: Response
       academic_year: e.course?.academicYear,
       instructor_id: e.course?.instructorId,
       instructor_name: e.course?.instructor?.fullName,
+      instructor_deleted: Boolean(e.course?.instructor?.deletedAt),
       instructor_department: e.course?.instructor?.department,
       schedule_id: e.scheduleId,
       exam_date: e.schedule?.examDate,
@@ -145,6 +146,7 @@ router.get('/summary', authenticateToken, async (req: AuthRequest, res: Response
       schedule_status: e.schedule?.status,
       coordinator_id: e.schedule?.coordinatorId,
       coordinator_name: e.schedule?.coordinator?.fullName,
+      coordinator_deleted: Boolean(e.schedule?.coordinator?.deletedAt),
     }));
 
     // Total summary statistics

@@ -34,6 +34,7 @@ function makeUser(id: number, role = 'INSTRUCTOR'): AnyRecord {
     isActive: true,
     mustChangePassword: false,
     sessionVersion: 0,
+    deletedAt: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     twoFactorTempCode: null,
@@ -78,7 +79,7 @@ function send(
   });
 }
 
-async function setup(t: TestContext, options: { retained?: Record<string, number>; targetExists?: boolean; notificationCount?: number } = {}) {
+async function setup(t: TestContext, options: { retained?: Record<string, number>; targetExists?: boolean; notificationCount?: number; failAudit?: boolean } = {}) {
   const [{ default: userRoutes }, { default: authRoutes }, { prisma }, { UserRole }, { auditMiddleware }] = await Promise.all([
     import('./userRoutes'),
     import('./authRoutes'),
@@ -102,6 +103,15 @@ async function setup(t: TestContext, options: { retained?: Record<string, number
 
   stubMethod(t, prisma.user, 'findUnique', async ({ where }: AnyRecord) => users.get(where.id) || null);
   stubMethod(t, prisma.user, 'findFirst', async ({ where }: AnyRecord) => {
+    if (where?.deletedAt === null) {
+      const activeMatch = [...users.values()].find((user) => !user.deletedAt && (
+        (where.OR || []).some((clause: AnyRecord) =>
+          (clause.username?.equals && user.username.toLowerCase() === String(clause.username.equals).toLowerCase())
+          || (clause.email?.equals && user.email.toLowerCase() === String(clause.email.equals).toLowerCase())
+        )
+      ));
+      return activeMatch || null;
+    }
     const usernameQuery = where?.OR?.find((clause: AnyRecord) => clause.username)?.username?.equals;
     const emailQuery = where?.OR?.find((clause: AnyRecord) => clause.email)?.email?.equals;
     return [...users.values()].find((user) =>
@@ -137,11 +147,11 @@ async function setup(t: TestContext, options: { retained?: Record<string, number
 
   const tx: AnyRecord = {
     user: {
-      findUnique: async ({ where }: AnyRecord) => where.id === target.id && targetExists ? target : null,
-      delete: async ({ where }: AnyRecord) => {
-        deletedIds.push(where.id);
-        users.delete(where.id);
-        targetExists = false;
+      findUnique: async ({ where }: AnyRecord) => where.id === target.id && targetExists ? { ...target } : null,
+      update: async ({ data }: AnyRecord) => {
+        const priorSessionVersion = target.sessionVersion;
+        Object.assign(target, { ...data, sessionVersion: priorSessionVersion });
+        if (data.sessionVersion?.increment) target.sessionVersion = priorSessionVersion + data.sessionVersion.increment;
         return target;
       },
     },
@@ -154,10 +164,20 @@ async function setup(t: TestContext, options: { retained?: Record<string, number
         return { count };
       },
     },
+    passwordResetRequest: {
+      updateMany: async () => ({ count: 0 }),
+    },
+    auditLog: {
+      create: async ({ data }: AnyRecord) => {
+        if (options.failAudit) throw new Error('audit insert failed');
+        auditCreates.push(data);
+        return data;
+      },
+    },
   };
   const retainedModels = [
     'course', 'exam', 'examStatusHistory', 'envelopeLabel', 'printRecord', 'packingRecord',
-    'deliveryRecord', 'examSchedule', 'passwordResetRequest', 'auditLog',
+    'deliveryRecord', 'examSchedule',
   ];
   for (const model of retainedModels) {
     tx[model] = {
@@ -167,7 +187,15 @@ async function setup(t: TestContext, options: { retained?: Record<string, number
       },
     };
   }
-  stubMethod(t, prisma, '$transaction', async (callback: (client: AnyRecord) => Promise<unknown>) => callback(tx));
+  stubMethod(t, prisma, '$transaction', async (callback: (client: AnyRecord) => Promise<unknown>) => {
+    const snapshot = { ...target };
+    try {
+      return await callback(tx);
+    } catch (error) {
+      Object.assign(target, snapshot);
+      throw error;
+    }
+  });
 
   const app = express();
   app.use(express.json());
@@ -433,66 +461,54 @@ test('user deletion rejects missing and self targets', async (t) => {
   assert.equal(state.users.has(state.admin.id), true);
 });
 
-test('retained business, workflow, and audit references block permanent deletion', async (t) => {
-  const cases = [
-    ['course', 'Subject.instructor_id'],
-    ['exam', 'Exam.created_by'],
-    ['examStatusHistory', 'Activity_Log.action_by'],
-    ['envelopeLabel', 'Envelope_Label.generated_by'],
-    ['printRecord', 'Exam_Print.printed_by'],
-    ['packingRecord', 'Envelope_Packing.packed_by'],
-    ['deliveryRecord', 'Exam_Delivery handed_over_by / received_by'],
-    ['examSchedule', 'Exam_Schedule.coordinator_id'],
-    ['passwordResetRequest', 'Password_Reset_Request.user_id / resolved_by'],
-    ['auditLog', 'System_Audit_Log.user_id'],
-  ] as const;
-
-  for (const [model, relation] of cases) {
-    await t.test(`${relation} is retained`, async (subtest) => {
-      const state = await setup(subtest, { retained: { [model]: 1 }, notificationCount: 2 });
-      const result = await state.deleteTarget();
-      assert.equal(result.status, 409);
-      assert.equal(result.body.code, 'USER_HAS_RETAINED_HISTORY');
-      assert.equal(state.users.has(state.target.id), true);
-      assert.deepEqual(state.deletedIds(), []);
-      assert.equal(state.notificationCount(), 2);
-      assert.equal(state.notificationDeleteCalls(), 0);
-      if (model === 'deliveryRecord') {
-        assert.deepEqual(state.retainedCalls.deliveryRecord.OR, [
-          { handedOverById: state.target.id },
-          { receivedById: state.target.id },
-        ]);
-      }
-      if (model === 'passwordResetRequest') {
-        assert.deepEqual(state.retainedCalls.passwordResetRequest.OR, [
-          { userId: state.target.id },
-          { resolvedById: state.target.id },
-        ]);
-      }
-    });
-  }
-});
-
-test('eligible account is permanently deleted, owned notifications are removed, and other users remain', async (t) => {
+test('admin soft-deletes a user and retains the user row and owned notifications', async (t) => {
   const state = await setup(t, { notificationCount: 3 });
   const result = await state.deleteTarget();
   assert.equal(result.status, 200);
-  assert.equal(state.users.has(state.target.id), false);
+  assert.equal(state.users.has(state.target.id), true);
+  assert.ok(state.target.deletedAt instanceof Date);
+  assert.equal(state.target.isActive, false);
+  assert.equal(state.target.sessionVersion, 1);
+  assert.equal(state.target.twoFactorTempCode, null);
   assert.equal(state.users.has(state.admin.id), true);
   assert.equal(state.users.has(state.unrelated.id), true);
-  assert.deepEqual(state.deletedIds(), [state.target.id]);
-  assert.equal(state.notificationDeleteCalls(), 1);
-  assert.equal(state.notificationCount(), 0);
-  const deletionAudit = state.auditCreates().find((entry) => entry.action === 'DELETE_USER'
+  assert.deepEqual(state.deletedIds(), []);
+  assert.equal(state.notificationDeleteCalls(), 0);
+  assert.equal(state.notificationCount(), 3);
+  const deletionAudit = state.auditCreates().find((entry) => entry.action === 'USER_SOFT_DELETED'
     && entry.userId === state.admin.id && entry.entityId === String(state.target.id));
   assert.ok(deletionAudit);
-  assert.deepEqual(JSON.parse(deletionAudit.detailJson), { permanent_deletion: true });
+  const auditDetails = JSON.parse(deletionAudit.detailJson);
+  assert.equal(auditDetails.target_username, state.target.username);
+  assert.equal(auditDetails.target_role, state.target.role);
+  assert.equal(auditDetails.previous_active_state, true);
+
+  const activate = await send(state.server, 'PATCH', `/api/users/${state.target.id}/suspend`, tokenFor(state.admin));
+  assert.equal(activate.status, 409);
+  assert.equal(activate.body.code, 'USER_ALREADY_DELETED');
+
+  const reset = await send(state.server, 'PATCH', `/api/users/${state.target.id}/reset-password`, tokenFor(state.admin), {
+    new_password: 'Temporary@Password123',
+    admin_password: 'Valid@Password123',
+  });
+  assert.equal(reset.status, 409);
 
   const login = await send(state.server, 'POST', '/api/auth/login', undefined, {
     username: state.target.username,
     password: 'Valid@Password123',
   });
   assert.equal(login.status, 401);
+});
+
+test('user soft delete rolls back when the transactional audit insert fails', async (t) => {
+  const state = await setup(t, { failAudit: true });
+  const result = await state.deleteTarget();
+
+  assert.equal(result.status, 500);
+  assert.equal(state.target.deletedAt, null);
+  assert.equal(state.target.isActive, true);
+  assert.equal(state.target.sessionVersion, 0);
+  assert.equal(state.auditCreates().length, 0);
 });
 
 test('existing edit, suspend, activate, reset-password and ADMIN permissions remain available', async (t) => {

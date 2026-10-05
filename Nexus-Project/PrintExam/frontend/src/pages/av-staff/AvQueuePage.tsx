@@ -205,7 +205,7 @@ export const AvQueuePage: React.FC = () => {
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="font-medium text-slate-800 dark:text-slate-200">
-                        {exam.instructor_name || '-'}
+                        {exam.instructor_name ? `${exam.instructor_name}${exam.instructor_deleted ? ` (${t('บัญชีถูกลบ', { ns: 'common' })})` : ''}` : '-'}
                       </div>
                       <div className="text-[11px] text-slate-400">{exam.instructor_email}</div>
                     </td>

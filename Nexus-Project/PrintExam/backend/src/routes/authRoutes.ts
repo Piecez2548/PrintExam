@@ -71,12 +71,13 @@ router.post('/forgot-password', forgotPasswordLimiter, async (req: Request, res:
   try {
     const user = await prisma.user.findFirst({
       where: {
+        deletedAt: null,
         OR: [
           { username: { equals: identifier, mode: 'insensitive' } },
           { email: { equals: identifier.toLowerCase(), mode: 'insensitive' } },
         ],
       },
-      select: { id: true, username: true, fullName: true, email: true, role: true },
+      select: { id: true, username: true, fullName: true, email: true, role: true, deletedAt: true },
     });
 
     if (user) {
@@ -124,7 +125,7 @@ router.post('/login', loginLimiter, async (req: Request, res: Response): Promise
 
   try {
     const user = await prisma.user.findFirst({
-      where: { username: { equals: String(username).trim(), mode: 'insensitive' } },
+      where: { username: { equals: String(username).trim(), mode: 'insensitive' }, deletedAt: null },
     });
 
     if (!user) {
@@ -159,7 +160,7 @@ router.post('/login', loginLimiter, async (req: Request, res: Response): Promise
       : user.email ? maskEmail(user.email) : maskPhone(user.phone);
 
     await prisma.user.update({
-      where: { id: user.id },
+      where: { id: user.id, deletedAt: null },
       data: {
         twoFactorTempCode: otpHash,
         twoFactorExpiresAt: expiresAt,
@@ -227,6 +228,11 @@ router.post('/verify-2fa', otpLimiter, async (req: Request, res: Response): Prom
       return;
     }
 
+    if (user.deletedAt) {
+      res.status(403).json({ success: false, message: 'บัญชีผู้ใช้นี้ถูกลบแล้ว' });
+      return;
+    }
+
     if (!user.isActive) {
       res.status(403).json({ success: false, message: 'บัญชีผู้ใช้นี้ถูกระงับการใช้งาน' });
       return;
@@ -234,7 +240,7 @@ router.post('/verify-2fa', otpLimiter, async (req: Request, res: Response): Prom
 
     if (!user.twoFactorExpiresAt || new Date(user.twoFactorExpiresAt) < new Date()) {
       await prisma.user.update({
-        where: { id: user.id },
+        where: { id: user.id, deletedAt: null },
         data: { twoFactorTempCode: null, twoFactorExpiresAt: null, twoFactorFailedAttempts: 0 },
       });
       res.status(400).json({
@@ -249,7 +255,7 @@ router.post('/verify-2fa', otpLimiter, async (req: Request, res: Response): Prom
     if (!user.twoFactorTempCode || !bcrypt.compareSync(otpCode, user.twoFactorTempCode)) {
       const attempts = user.twoFactorFailedAttempts + 1;
       await prisma.user.update({
-        where: { id: user.id },
+        where: { id: user.id, deletedAt: null },
         data: attempts >= MAX_OTP_ATTEMPTS
           ? { twoFactorTempCode: null, twoFactorExpiresAt: null, twoFactorFailedAttempts: 0 }
           : { twoFactorFailedAttempts: attempts },
@@ -264,7 +270,7 @@ router.post('/verify-2fa', otpLimiter, async (req: Request, res: Response): Prom
 
     // Clear 2FA temp code
     await prisma.user.update({
-      where: { id: user.id },
+      where: { id: user.id, deletedAt: null },
       data: {
         twoFactorTempCode: null,
         twoFactorExpiresAt: null,
@@ -332,6 +338,7 @@ router.post('/quick-login', async (req: Request, res: Response): Promise<void> =
       where: {
         role: role as UserRole,
         isActive: true,
+        deletedAt: null,
       },
     });
 

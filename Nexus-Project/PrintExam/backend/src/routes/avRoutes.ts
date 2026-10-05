@@ -23,8 +23,8 @@ router.post(
     const examId = Number(id);
 
     try {
-      const exam = await prisma.exam.findUnique({
-        where: { id: examId },
+      const exam = await prisma.exam.findFirst({
+        where: { id: examId, deletedAt: null },
         include: {
           course: true,
         },
@@ -51,7 +51,7 @@ router.post(
 
       await prisma.$transaction([
         prisma.exam.update({
-          where: { id: examId },
+          where: { id: examId, deletedAt: null },
           data: { status: newStatus, rejectionReason: null },
         }),
         prisma.examStatusHistory.create({
@@ -115,8 +115,8 @@ router.post(
     }
 
     try {
-      const exam = await prisma.exam.findUnique({
-        where: { id: examId },
+      const exam = await prisma.exam.findFirst({
+        where: { id: examId, deletedAt: null },
         include: {
           course: true,
         },
@@ -137,7 +137,7 @@ router.post(
 
       await prisma.$transaction([
         prisma.exam.update({
-          where: { id: examId },
+          where: { id: examId, deletedAt: null },
           data: { status: newStatus, rejectionReason: reason.trim().slice(0, 1000) },
         }),
         prisma.examStatusHistory.create({
@@ -197,8 +197,8 @@ router.post(
     const examId = Number(id);
 
     try {
-      const exam = await prisma.exam.findUnique({
-        where: { id: examId },
+      const exam = await prisma.exam.findFirst({
+        where: { id: examId, deletedAt: null },
         include: {
           course: true,
         },
@@ -244,7 +244,7 @@ router.post(
             notes: notes ? String(notes).slice(0, 1000) : null,
           },
         }),
-        prisma.exam.update({ where: { id: examId }, data: { status: newStatus } }),
+        prisma.exam.update({ where: { id: examId, deletedAt: null }, data: { status: newStatus } }),
         prisma.examStatusHistory.create({
           data: {
             examId,
@@ -288,8 +288,8 @@ router.get(
     const examId = Number(id);
 
     try {
-      const exam = await prisma.exam.findUnique({
-        where: { id: examId },
+      const exam = await prisma.exam.findFirst({
+        where: { id: examId, deletedAt: null },
         include: {
           course: {
             include: {
@@ -405,8 +405,8 @@ router.post(
     const examId = Number(id);
 
     try {
-      const exam = await prisma.exam.findUnique({
-        where: { id: examId },
+      const exam = await prisma.exam.findFirst({
+        where: { id: examId, deletedAt: null },
         include: {
           course: true,
         },
@@ -439,7 +439,7 @@ router.post(
             notes: notes ? String(notes).slice(0, 1000) : null,
           },
         }),
-        prisma.exam.update({ where: { id: examId }, data: { status: newStatus } }),
+        prisma.exam.update({ where: { id: examId, deletedAt: null }, data: { status: newStatus } }),
         prisma.examStatusHistory.create({
           data: {
             examId,

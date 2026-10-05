@@ -75,7 +75,7 @@ type HistoricalPrintRecord = {
   id: number;
   examId: number;
   printedById: number;
-  printedBy?: { fullName: string } | null;
+  printedBy?: { fullName: string; deletedAt?: Date | null } | null;
   printedCopies: number;
   paperType: string;
   printedAt: Date;
@@ -88,6 +88,7 @@ export function formatHistoricalPrintRecord(p: HistoricalPrintRecord) {
     exam_id: p.examId,
     printed_by: p.printedById,
     printer_name: p.printedBy?.fullName,
+    printer_deleted: Boolean(p.printedBy?.deletedAt),
     printed_copies: p.printedCopies,
     paper_type: p.paperType,
     printed_at: p.printedAt.toISOString(),
@@ -153,9 +154,10 @@ export function checkCanEditOrCancel(exam: any): { allowed: boolean; reason?: st
 export function formatExam(e: any) {
   return {
     id: e.id,
+    deleted_at: e.deletedAt instanceof Date ? e.deletedAt.toISOString() : e.deletedAt ?? null,
     course_id: e.courseId,
     schedule_id: e.scheduleId,
-    file_url: e.fileUrl,
+    file_url: e.deletedAt ? null : e.fileUrl,
     original_filename: e.originalFilename,
     file_type: e.fileType,
     file_size: e.fileSize,
@@ -189,6 +191,7 @@ export function formatExam(e: any) {
     academic_year: e.course ? e.course.academicYear : undefined,
     instructor_id: e.course ? e.course.instructorId : undefined,
     instructor_name: e.course?.instructor ? e.course.instructor.fullName : undefined,
+    instructor_deleted: Boolean(e.course?.instructor?.deletedAt),
     instructor_email: e.course?.instructor ? e.course.instructor.email : undefined,
     instructor_phone: e.course?.instructor ? e.course.instructor.phone : undefined,
     instructor_office_room: e.course?.instructor ? e.course.instructor.officeRoom : undefined,
@@ -199,6 +202,7 @@ export function formatExam(e: any) {
     room: e.schedule ? e.schedule.room : undefined,
     exam_type: e.schedule ? e.schedule.examType : undefined,
     coordinator_name: e.schedule?.coordinator ? e.schedule.coordinator.fullName : undefined,
+    creator_deleted: Boolean(e.createdBy?.deletedAt),
   };
 }
 
@@ -220,7 +224,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response): Prom
   const user = req.user!;
 
   try {
-    const where: Prisma.ExamWhereInput = {};
+    const where: Prisma.ExamWhereInput = { deletedAt: null };
 
     // Instructors can only view exams of their own courses (REQ-0004)
     if (user.role === UserRole.INSTRUCTOR) {
@@ -314,8 +318,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
   const examId = Number(id);
 
   try {
-    const exam = await prisma.exam.findUnique({
-      where: { id: examId },
+    const exam = await prisma.exam.findFirst({
+      where: { id: examId, ...(user.role === UserRole.ADMIN ? {} : { deletedAt: null }) },
       include: {
         course: {
           include: {
@@ -329,7 +333,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
         },
         createdBy: true,
         statusHistory: {
-          include: { actionBy: { select: { role: true } } },
+          include: { actionBy: { select: { role: true, deletedAt: true } } },
           orderBy: [{ actionAt: 'desc' }, { id: 'desc' }],
         },
         printRecords: {
@@ -381,6 +385,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
         entityId: true,
         detailJson: true,
         createdAt: true,
+        user: { select: { deletedAt: true } },
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
@@ -395,6 +400,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
       action_by: h.actionById,
       action_name: h.actionName,
       action_role: h.actionBy?.role,
+      action_deleted: Boolean(h.actionBy?.deletedAt),
       action_at: h.actionAt.toISOString(),
       note: h.note,
     }));
@@ -412,6 +418,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
         action_by: log.userId,
         action_name: log.userName || 'System/Anonymous',
         action_role: log.userRole || 'SYSTEM',
+        action_deleted: Boolean(log.user?.deletedAt),
         action_at: log.createdAt.toISOString(),
         changes,
       }];
@@ -428,6 +435,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
       exam_id: pk.examId,
       packed_by: pk.packedById,
       packer_name: pk.packedBy?.fullName,
+      packer_deleted: Boolean(pk.packedBy?.deletedAt),
       packed_at: pk.packedAt.toISOString(),
       envelope_count: pk.envelopeCount,
       notes: pk.notes,
@@ -438,8 +446,10 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
       exam_id: d.examId,
       handed_over_by: d.handedOverById,
       handover_name: d.handedOverBy?.fullName,
+      handover_deleted: Boolean(d.handedOverBy?.deletedAt),
       received_by: d.receivedById,
       receiver_name: d.receivedBy?.fullName,
+      receiver_deleted: Boolean(d.receivedBy?.deletedAt),
       delivered_at: d.deliveredAt.toISOString(),
       receiver_signature_note: d.receiverSignatureNote,
     }));
@@ -586,7 +596,7 @@ router.post(
       }
       if (selectedSchedule.deadlineDate) deadlineAt = parseDeadlineAt(selectedSchedule.deadlineDate);
       const existingSubmission = await prisma.exam.findFirst({
-        where: { scheduleId: schedId, status: { not: ExamStatus.CANCELLED } },
+        where: { scheduleId: schedId, status: { not: ExamStatus.CANCELLED }, deletedAt: null },
       });
       if (existingSubmission) {
         removeUploadedFile(req.file?.path);
@@ -763,8 +773,8 @@ router.put('/:id', authenticateToken, uploadExamFile.single('file'), async (req:
   let pendingStoredFileUrl: string | null = null;
 
   try {
-    const exam = await prisma.exam.findUnique({
-      where: { id: examId },
+    const exam = await prisma.exam.findFirst({
+      where: { id: examId, deletedAt: null },
     });
 
     if (!exam) {
@@ -821,7 +831,7 @@ router.put('/:id', authenticateToken, uploadExamFile.single('file'), async (req:
         return;
       }
       const occupied = await prisma.exam.findFirst({
-        where: { scheduleId: nextSchedule.id, id: { not: examId }, status: { not: ExamStatus.CANCELLED } },
+        where: { scheduleId: nextSchedule.id, id: { not: examId }, status: { not: ExamStatus.CANCELLED }, deletedAt: null },
         select: { id: true },
       });
       if (occupied) {
@@ -907,10 +917,10 @@ router.put('/:id', authenticateToken, uploadExamFile.single('file'), async (req:
       submittedAt: newStatus === ExamStatus.SUBMITTED && !exam.submittedAt ? new Date() : undefined,
     };
     const transactionResult = await prisma.$transaction(async (tx) => {
-      const transactionCurrent = await tx.exam.findUnique({ where: { id: examId } });
+      const transactionCurrent = await tx.exam.findFirst({ where: { id: examId, deletedAt: null } });
       if (!transactionCurrent) throw new Error('Exam not found');
       const saved = await tx.exam.update({
-        where: { id: examId },
+        where: { id: examId, deletedAt: null },
         data: examUpdateData,
       });
       const toAuditValues = (value: typeof transactionCurrent): Record<string, unknown> => ({
@@ -1010,6 +1020,84 @@ router.put('/:id', authenticateToken, uploadExamFile.single('file'), async (req:
   }
 });
 
+// Admin-only logical deletion. Keep the Exam row and all workflow/operational history.
+router.delete('/:id/soft-delete', authenticateToken, requireRole(UserRole.ADMIN), async (req: AuthRequest, res: Response): Promise<void> => {
+  const examId = Number(req.params.id);
+  if (!Number.isInteger(examId) || examId <= 0) {
+    res.status(400).json({ success: false, code: 'INVALID_EXAM_ID', message: 'รหัสข้อสอบไม่ถูกต้อง' });
+    return;
+  }
+
+  const user = req.user!;
+  const deletedAt = new Date();
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const exam = await tx.exam.findFirst({
+        where: { id: examId, deletedAt: null },
+        include: {
+          course: { include: { instructor: { select: { fullName: true } } } },
+          schedule: true,
+          _count: {
+            select: { statusHistory: true, printRecords: true, packingRecords: true, deliveryRecords: true },
+          },
+        },
+      });
+      if (!exam) return { kind: 'not_found' as const };
+
+      const update = await tx.exam.updateMany({
+        where: { id: examId, deletedAt: null },
+        data: { deletedAt },
+      });
+      if (update.count !== 1) return { kind: 'already_deleted' as const };
+
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          userName: user.full_name,
+          userRole: user.role,
+          action: 'EXAM_SOFT_DELETED',
+          entityType: 'EXAM',
+          entityId: String(exam.id),
+          ipAddress: req.ip || '127.0.0.1',
+          detailJson: JSON.stringify({
+            exam_id: exam.id,
+            course_code: exam.course.courseCode,
+            course_name: exam.course.courseName,
+            exam_type: exam.schedule?.examType || null,
+            exam_date: exam.schedule?.examDate || null,
+            instructor_name: exam.course.instructor.fullName,
+            previous_status: exam.status,
+            deleted_at: deletedAt.toISOString(),
+            actor_user_id: user.id,
+            actor_role: user.role,
+            deletion_mode: 'logical_delete',
+            retained_history_counts: exam._count,
+            retained_file: Boolean(exam.fileUrl),
+          }),
+        },
+      });
+
+      return { kind: 'deleted' as const };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    if (result.kind === 'not_found') {
+      res.status(404).json({ success: false, code: 'EXAM_NOT_FOUND', message: 'ไม่พบข้อสอบที่ยังใช้งานอยู่' });
+      return;
+    }
+    if (result.kind === 'already_deleted') {
+      res.status(409).json({ success: false, code: 'EXAM_ALREADY_DELETED', message: 'ข้อสอบนี้ถูกลบแล้ว' });
+      return;
+    }
+
+    req.auditHandledAtomically = true;
+    broadcastEvent('EXAM_SOFT_DELETED', { examId });
+    res.json({ success: true, message: 'นำข้อสอบออกจากการใช้งานแล้ว โดยเก็บประวัติและไฟล์ไว้' });
+  } catch (error) {
+    console.error('[Soft Delete Exam Error]', error);
+    res.status(500).json({ success: false, message: 'ไม่สามารถลบข้อสอบได้ กรุณาลองใหม่อีกครั้ง' });
+  }
+});
+
 // Delete / Cancel exam (REQ-0005)
 router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   const { id } = req.params;
@@ -1017,8 +1105,8 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
   const examId = Number(id);
 
   try {
-    const exam = await prisma.exam.findUnique({
-      where: { id: examId },
+    const exam = await prisma.exam.findFirst({
+      where: { id: examId, deletedAt: null },
     });
 
     if (!exam) {
@@ -1043,7 +1131,7 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
 
     await prisma.$transaction([
       prisma.exam.update({
-        where: { id: examId },
+        where: { id: examId, deletedAt: null },
         data: {
           status: ExamStatus.CANCELLED,
           fileUrl: null,

@@ -459,7 +459,7 @@ export const CourseSchedulePage: React.FC = () => {
                         {course.course_name}
                       </td>
                       <td className="py-3.5 px-4">
-                        <div className="font-semibold text-slate-800 dark:text-slate-200">{course.instructor_name}</div>
+                        <div className="font-semibold text-slate-800 dark:text-slate-200">{course.instructor_name}{course.instructor_deleted ? ` (${t('บัญชีถูกลบ', { ns: 'common' })})` : ''}</div>
                         <div className="text-[11px] text-slate-400">{course.instructor_email}</div>
                       </td>
                       <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
@@ -552,7 +552,7 @@ export const CourseSchedulePage: React.FC = () => {
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="font-semibold text-slate-800 dark:text-slate-200">
-                          {sched.instructor_name || '-'}
+                          {sched.instructor_name ? `${sched.instructor_name}${sched.instructor_deleted ? ` (${t('บัญชีถูกลบ', { ns: 'common' })})` : ''}` : '-'}
                         </div>
                         <div className="text-[11px] text-slate-400">
                           {courses.find((c) => c.id === sched.course_id)?.instructor_email || ''}

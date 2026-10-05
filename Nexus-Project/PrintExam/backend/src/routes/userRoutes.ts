@@ -47,7 +47,7 @@ function formatUser(u: any) {
 
 router.get('/password-reset-requests', authenticateToken, requireRole(UserRole.ADMIN), async (_req: AuthRequest, res: Response): Promise<void> => {
   const requests = await prisma.passwordResetRequest.findMany({
-    where: { status: 'PENDING' },
+    where: { status: 'PENDING', user: { deletedAt: null } },
     include: { user: true },
     orderBy: { requestedAt: 'asc' },
     take: 100,
@@ -75,7 +75,7 @@ router.get(
   const { search, role, status } = req.query;
 
   try {
-    const where: Prisma.UserWhereInput = {};
+    const where: Prisma.UserWhereInput = { deletedAt: null };
     if (req.user?.role === UserRole.COORDINATOR) where.role = UserRole.INSTRUCTOR;
 
     if (search) {
@@ -292,7 +292,7 @@ router.put('/me/profile', authenticateToken, async (req: AuthRequest, res: Respo
     }
 
     const updated = await prisma.user.update({
-      where: { id: current.id },
+      where: { id: current.id, deletedAt: null },
       data: {
         username: normalizedUsername,
         fullName: normalizedName,
@@ -351,6 +351,11 @@ router.put('/:id', authenticateToken, requireRole(UserRole.ADMIN), async (req: A
       return;
     }
 
+    if (user.deletedAt) {
+      res.status(409).json({ success: false, code: 'USER_ALREADY_DELETED', message: 'บัญชีผู้ใช้นี้ถูกลบแล้วและแก้ไขไม่ได้' });
+      return;
+    }
+
     if (req.user!.id === userId && role && role !== user.role) {
       res.status(400).json({ success: false, message: 'ไม่สามารถเปลี่ยนบทบาทบัญชีของตนเองได้' });
       return;
@@ -396,7 +401,7 @@ router.put('/:id', authenticateToken, requireRole(UserRole.ADMIN), async (req: A
     }
 
     const updated = await prisma.user.update({
-      where: { id: userId },
+      where: { id: userId, deletedAt: null },
       data: {
         fullName: full_name !== undefined ? full_name : undefined,
         email: email !== undefined ? email : undefined,
@@ -446,9 +451,14 @@ router.patch('/:id/suspend', authenticateToken, requireRole(UserRole.ADMIN), asy
       return;
     }
 
+    if (user.deletedAt) {
+      res.status(409).json({ success: false, code: 'USER_ALREADY_DELETED', message: 'บัญชีผู้ใช้นี้ถูกลบแล้วและไม่สามารถเปิดใช้งานได้' });
+      return;
+    }
+
     const newStatus = !user.isActive;
     const updated = await prisma.user.update({
-      where: { id: userId },
+      where: { id: userId, deletedAt: null },
       data: { isActive: newStatus, sessionVersion: { increment: 1 } },
     });
 
@@ -509,9 +519,13 @@ router.patch('/:id/reset-password', authenticateToken, requireRole(UserRole.ADMI
       res.status(404).json({ success: false, message: 'ไม่พบผู้ใช้งาน' });
       return;
     }
+    if (target.deletedAt) {
+      res.status(409).json({ success: false, code: 'USER_ALREADY_DELETED', message: 'บัญชีผู้ใช้นี้ถูกลบแล้วและไม่สามารถรีเซ็ตรหัสผ่านได้' });
+      return;
+    }
 
     await prisma.user.update({
-      where: { id: userId },
+      where: { id: userId, deletedAt: null },
       data: {
         passwordHash: bcrypt.hashSync(newPassword, 12),
         mustChangePassword: true,
@@ -563,8 +577,18 @@ router.patch('/:id/role', authenticateToken, requireRole(UserRole.ADMIN), async 
   }
 
   try {
+    const target = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, deletedAt: true } });
+    if (!target) {
+      res.status(404).json({ success: false, message: 'ไม่พบผู้ใช้งาน' });
+      return;
+    }
+    if (target.deletedAt) {
+      res.status(409).json({ success: false, code: 'USER_ALREADY_DELETED', message: 'บัญชีผู้ใช้นี้ถูกลบแล้วและเปลี่ยนบทบาทไม่ได้' });
+      return;
+    }
+
     const updated = await prisma.user.update({
-      where: { id: userId },
+      where: { id: userId, deletedAt: null },
       data: { role: role as UserRole, sessionVersion: { increment: 1 } },
     });
 
@@ -605,37 +629,50 @@ router.delete('/:id', authenticateToken, requireRole(UserRole.ADMIN), async (req
   }
 
   try {
+    const deletedAt = new Date();
     const result = await prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({
         where: { id: userId },
-        select: { id: true },
+        select: { id: true, username: true, fullName: true, role: true, isActive: true, deletedAt: true },
       });
       if (!user) return { kind: 'not_found' as const };
+      if (user.deletedAt) return { kind: 'already_deleted' as const };
 
-      // These relations represent retained workflow, business, or audit history.
-      // A deletion is eligible only when none of them still references this user.
-      const retainedReferenceChecks = await Promise.all([
-        tx.course.count({ where: { instructorId: userId } }),
-        tx.exam.count({ where: { createdById: userId } }),
-        tx.examStatusHistory.count({ where: { actionById: userId } }),
-        tx.envelopeLabel.count({ where: { generatedById: userId } }),
-        tx.printRecord.count({ where: { printedById: userId } }),
-        tx.packingRecord.count({ where: { packedById: userId } }),
-        tx.deliveryRecord.count({ where: { OR: [{ handedOverById: userId }, { receivedById: userId }] } }),
-        tx.examSchedule.count({ where: { coordinatorId: userId } }),
-        tx.passwordResetRequest.count({ where: { OR: [{ userId }, { resolvedById: userId }] } }),
-        tx.auditLog.count({ where: { userId } }),
-      ]);
+      await tx.user.update({
+        where: { id: userId, deletedAt: null },
+        data: {
+          deletedAt,
+          isActive: false,
+          sessionVersion: { increment: 1 },
+          twoFactorTempCode: null,
+          twoFactorExpiresAt: null,
+          twoFactorFailedAttempts: 0,
+        },
+      });
 
-      if (retainedReferenceChecks.some((count) => count > 0)) {
-        return { kind: 'retained_history' as const };
-      }
+      await tx.passwordResetRequest.updateMany({
+        where: { userId, status: 'PENDING' },
+        data: { status: 'CANCELLED', resolvedAt: deletedAt, resolvedById: req.user!.id },
+      });
 
-      // Notifications are account-owned disposable data (the FK also cascades).
-      await tx.notification.deleteMany({ where: { userId } });
-
-      await tx.user.delete({ where: { id: userId } });
-
+      await tx.auditLog.create({
+        data: {
+          userId: req.user!.id,
+          userName: req.user!.full_name,
+          userRole: req.user!.role,
+          action: 'USER_SOFT_DELETED',
+          entityType: 'USER',
+          entityId: String(userId),
+          ipAddress: req.ip || '127.0.0.1',
+          detailJson: JSON.stringify({
+            target_user_id: user.id,
+            target_username: user.username,
+            target_role: user.role,
+            previous_active_state: user.isActive,
+            deleted_at: deletedAt.toISOString(),
+          }),
+        },
+      });
       return { kind: 'deleted' as const };
     });
 
@@ -643,38 +680,17 @@ router.delete('/:id', authenticateToken, requireRole(UserRole.ADMIN), async (req
       res.status(404).json({ success: false, message: 'ไม่พบผู้ใช้งาน' });
       return;
     }
-    if (result.kind === 'retained_history') {
+    if (result.kind === 'already_deleted') {
       res.status(409).json({
         success: false,
-        code: 'USER_HAS_RETAINED_HISTORY',
-        message: 'ไม่สามารถลบบัญชีนี้ได้ เนื่องจากมีประวัติการใช้งานหรือข้อมูลในกระบวนการสอบที่ต้องเก็บรักษา',
+        code: 'USER_ALREADY_DELETED',
+        message: 'บัญชีผู้ใช้นี้ถูกลบแล้ว',
       });
       return;
     }
-
-    await recordAuditLog(
-      req.user!.id,
-      req.user!.full_name,
-      req.user!.role,
-      'DELETE_USER',
-      'USER',
-      id,
-      req.ip || '127.0.0.1',
-      { permanent_deletion: true }
-    );
-
-    res.json({ success: true, message: 'ลบบัญชีถาวรแล้ว' });
+    req.auditHandledAtomically = true;
+    res.json({ success: true, message: 'ลบบัญชีผู้ใช้เรียบร้อยแล้ว โดยเก็บประวัติการใช้งานไว้' });
   } catch (error) {
-    // A concurrent retained record can still win the race after the reference
-    // checks. The FK rejects the delete and the transaction rolls back.
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
-      res.status(409).json({
-        success: false,
-        code: 'USER_HAS_RETAINED_HISTORY',
-        message: 'ไม่สามารถลบบัญชีนี้ได้ เนื่องจากมีประวัติการใช้งานหรือข้อมูลในกระบวนการสอบที่ต้องเก็บรักษา',
-      });
-      return;
-    }
     console.error('[Delete User Error]', error);
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการลบผู้ใช้งาน' });
   }
