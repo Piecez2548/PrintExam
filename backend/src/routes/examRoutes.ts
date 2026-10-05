@@ -13,6 +13,30 @@ import { deleteStoredExamFile, persistExamUpload } from '../services/fileStorage
 
 const router = Router();
 
+type HistoricalPrintRecord = {
+  id: number;
+  examId: number;
+  printedById: number;
+  printedBy?: { fullName: string } | null;
+  printedCopies: number;
+  paperType: string;
+  printedAt: Date;
+  notes: string | null;
+};
+
+export function formatHistoricalPrintRecord(p: HistoricalPrintRecord) {
+  return {
+    id: p.id,
+    exam_id: p.examId,
+    printed_by: p.printedById,
+    printer_name: p.printedBy?.fullName,
+    printed_copies: p.printedCopies,
+    paper_type: p.paperType,
+    printed_at: p.printedAt.toISOString(),
+    notes: p.notes,
+  };
+}
+
 function removeUploadedFile(filePath?: string): void {
   if (!filePath) return;
   try {
@@ -290,16 +314,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
       note: h.note,
     }));
 
-    const formattedPrintRecords = exam.printRecords.map((p) => ({
-      id: p.id,
-      exam_id: p.examId,
-      printed_by: p.printedById,
-      printer_name: p.printedBy?.fullName,
-      printed_copies: p.printedCopies,
-      paper_type: p.paperType,
-      printed_at: p.printedAt.toISOString(),
-      notes: p.notes,
-    }));
+    const formattedPrintRecords = exam.printRecords.map(formatHistoricalPrintRecord);
 
     const formattedPackingRecords = exam.packingRecords.map((pk) => ({
       id: pk.id,

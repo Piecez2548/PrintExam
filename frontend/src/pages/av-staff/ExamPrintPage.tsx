@@ -19,6 +19,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { localizedApiError } from '../../api/localizedError';
 import i18n from '../../i18n';
+import { APPROVED_PAPER_WEIGHTS, type ApprovedPaperWeight } from '../../utils/paperPrintSpecification';
 
 export const ExamPrintPage: React.FC = () => {
   const { t } = useTranslation("avStaff");
@@ -32,7 +33,7 @@ export const ExamPrintPage: React.FC = () => {
 
   // Print record state (REQ-0009)
   const [printedCopies, setPrintedCopies] = useState<number>(0);
-  const [paperType, setPaperType] = useState<string>('A4 80gsm หน้า-หลัง');
+  const [paperWeight, setPaperWeight] = useState<ApprovedPaperWeight>(APPROVED_PAPER_WEIGHTS[0]);
   const [notes, setNotes] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -69,7 +70,7 @@ export const ExamPrintPage: React.FC = () => {
     try {
       await examsApi.printExam(id, {
         printed_copies: printedCopies,
-        paper_type: paperType,
+        paper_weight: paperWeight,
         notes: notes || 'พิมพ์เรียบร้อยตามมาตรฐาน',
         mark_completed: markCompleted,
       });
@@ -85,7 +86,11 @@ export const ExamPrintPage: React.FC = () => {
         fetchExam();
       }
     } catch (err: any) {
-      toast.error(t("บันทึกการพิมพ์ไม่สำเร็จ"), localizedApiError(err, t('An unexpected error occurred.')));
+      const errorCode = err?.response?.data?.code;
+      const message = errorCode === 'UNSUPPORTED_PRINT_SPEC'
+        ? t('สเปกการพิมพ์นี้ไม่รองรับ')
+        : localizedApiError(err, t('An unexpected error occurred.'));
+      toast.error(t("บันทึกการพิมพ์ไม่สำเร็จ"), message);
     } finally {
       setIsSubmitting(false);
     }
@@ -194,16 +199,41 @@ export const ExamPrintPage: React.FC = () => {
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-
-                {t("ชนิดกระดาษและหมึกพิมพ์")}
+              <label htmlFor="paper-weight" className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                {t('น้ำหนัก/ชนิดกระดาษ')}
               </label>
-              <input
-                type="text"
-                value={paperType}
-                onChange={(e) => setPaperType(e.target.value)}
-                className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-medium"
-              />
+              <select
+                id="paper-weight"
+                value={paperWeight}
+                onChange={(e) => setPaperWeight(e.target.value as ApprovedPaperWeight)}
+                disabled={APPROVED_PAPER_WEIGHTS.length === 1}
+                className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-medium disabled:cursor-default disabled:opacity-100"
+              >
+                {APPROVED_PAPER_WEIGHTS.map((weight) => (
+                  <option key={weight} value={weight}>{weight}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <span className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">{t('ขนาดกระดาษ')}</span>
+              <div className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                {exam.paper_size || t('ไม่ระบุ')}
+              </div>
+            </div>
+
+            <div>
+              <span className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">{t('ด้านการพิมพ์')}</span>
+              <div className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                {exam.is_double_sided ? t('Double-sided') : t('Single-sided')}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 dark:border-teal-900 dark:bg-teal-950/30">
+            <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">{t('ตัวอย่างสเปกการพิมพ์')}</div>
+            <div className="mt-1 font-bold text-slate-800 dark:text-slate-100">
+              {exam.paper_size || t('ไม่ระบุ')} • {paperWeight} • {exam.is_double_sided ? t('Double-sided') : t('Single-sided')}
             </div>
           </div>
 

@@ -31,3 +31,22 @@ test('rejected exam remains correctable until its actual deadline', async () => 
   assert.equal(checkCanEditOrCancel({ status: 'REJECTED', deadlineAt: soon }).allowed, true);
   assert.equal(checkCanEditOrCancel({ status: 'REJECTED', deadlineAt: expired }).allowed, false);
 });
+
+test('historical paper_type values remain readable exactly as stored', async () => {
+  const { formatHistoricalPrintRecord } = await import('./examRoutes');
+  const oldValues = ['A4', 'A4 80gsm', 'A4 80gsm หน้า-หลัง', 'legacy custom value'];
+
+  for (const paperType of oldValues) {
+    const record = formatHistoricalPrintRecord({
+      id: 1,
+      examId: 41,
+      printedById: 17,
+      printedBy: null,
+      printedCopies: 4,
+      paperType,
+      printedAt: new Date('2026-01-01T00:00:00.000Z'),
+      notes: null,
+    });
+    assert.equal(record.paper_type, paperType);
+  }
+});
