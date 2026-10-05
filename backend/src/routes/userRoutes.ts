@@ -7,8 +7,25 @@ import { recordAuditLog } from '../middleware/audit';
 import { UserRole, Prisma } from '../../generated/prisma';
 import { setAuthCookie, signAccessToken } from '../services/authTokenService';
 import { validatePassword } from '../utils/passwordPolicy';
+import { isCanonicalPsuHatYaiOrganization } from '../data/psuHatYaiOrganizations';
 
 const router = Router();
+const USERNAME_PATTERN = /^[A-Za-z0-9._-]{3,64}$/;
+
+function normalizePhoneNumber(value: unknown): { valid: boolean; phone: string | null } {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return { valid: true, phone: null };
+  }
+
+  const input = String(value).trim();
+  const digits = /^\d{10}$/.test(input)
+    ? input
+    : /^\d{3}-\d{3}-\d{4}$/.test(input)
+      ? input.replace(/-/g, '')
+      : null;
+  if (!digits) return { valid: false, phone: null };
+  return { valid: true, phone: `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}` };
+}
 
 // Helper to format user for frontend response
 function formatUser(u: any) {
@@ -107,11 +124,20 @@ router.get(
 // Create new user (Admin only - REQ-0002)
 router.post('/', authenticateToken, requireRole(UserRole.ADMIN), async (req: AuthRequest, res: Response): Promise<void> => {
   const { username, password, full_name, email, role, department, phone } = req.body;
+  const normalizedUsername = typeof username === 'string' ? username.trim() : '';
 
-  if (!username || !password || !full_name || !email || !role) {
+  if (!normalizedUsername || !password || !full_name || !email || !role) {
     res.status(400).json({
       success: false,
       message: 'กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน (Username, Password, Name, Email, Role)',
+    });
+    return;
+  }
+
+  if (!USERNAME_PATTERN.test(normalizedUsername)) {
+    res.status(400).json({
+      success: false,
+      message: 'ชื่อผู้ใช้ใช้ได้เฉพาะตัวอักษรภาษาอังกฤษ ตัวเลข และ . _ - เท่านั้น (3-64 ตัว)',
     });
     return;
   }
@@ -124,6 +150,26 @@ router.post('/', authenticateToken, requireRole(UserRole.ADMIN), async (req: Aut
 
   if (!Object.values(UserRole).includes(role as UserRole)) {
     res.status(400).json({ success: false, message: 'บทบาทผู้ใช้ไม่ถูกต้อง' });
+    return;
+  }
+
+  const normalizedPhone = normalizePhoneNumber(phone);
+  if (!normalizedPhone.valid) {
+    res.status(400).json({
+      success: false,
+      message: 'เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลัก ในรูปแบบ 000-000-0000',
+    });
+    return;
+  }
+
+  const normalizedDepartment = typeof department === 'string' ? department.trim() : department;
+  if (normalizedDepartment !== undefined && normalizedDepartment !== null && normalizedDepartment !== ''
+    && !isCanonicalPsuHatYaiOrganization(normalizedDepartment)) {
+    res.status(400).json({
+      success: false,
+      code: 'INVALID_PSU_ORGANIZATION',
+      message: 'กรุณาเลือกสังกัด PSU ที่ถูกต้องจากรายการ',
+    });
     return;
   }
 
@@ -145,13 +191,13 @@ router.post('/', authenticateToken, requireRole(UserRole.ADMIN), async (req: Aut
     const passwordHash = bcrypt.hashSync(password, 12);
     const newUser = await prisma.user.create({
       data: {
-        username: String(username).trim(),
+        username: normalizedUsername,
         passwordHash,
         fullName: String(full_name).trim(),
         email: String(email).trim().toLowerCase(),
         role: role as UserRole,
-        department: department || null,
-        phone: phone || null,
+        department: normalizedDepartment || null,
+        phone: normalizedPhone.phone,
         isActive: true,
         mustChangePassword: true,
       },
@@ -304,9 +350,49 @@ router.put('/:id', authenticateToken, requireRole(UserRole.ADMIN), async (req: A
       res.status(404).json({ success: false, message: 'ไม่พบผู้ใช้งานที่ระบุ' });
       return;
     }
+
     if (req.user!.id === userId && role && role !== user.role) {
       res.status(400).json({ success: false, message: 'ไม่สามารถเปลี่ยนบทบาทบัญชีของตนเองได้' });
       return;
+    }
+
+    let normalizedDepartment: string | null | undefined;
+    if (department !== undefined) {
+      if (department === user.department) {
+        // Keep an unchanged legacy organization value intact.
+        normalizedDepartment = user.department;
+      } else if (department === null) {
+        normalizedDepartment = null;
+      } else if (typeof department === 'string' && department.trim() === '') {
+        normalizedDepartment = department;
+      } else if (typeof department === 'string' && isCanonicalPsuHatYaiOrganization(department.trim())) {
+        normalizedDepartment = department.trim();
+      } else {
+        res.status(400).json({
+          success: false,
+          code: 'INVALID_PSU_ORGANIZATION',
+          message: 'กรุณาเลือกสังกัด PSU ที่ถูกต้องจากรายการ',
+        });
+        return;
+      }
+    }
+
+    let normalizedPhone: string | null | undefined;
+    if (phone !== undefined) {
+      if (phone === user.phone) {
+        // Keep an unchanged legacy value intact so existing accounts remain editable.
+        normalizedPhone = user.phone;
+      } else {
+        const result = normalizePhoneNumber(phone);
+        if (!result.valid) {
+          res.status(400).json({
+            success: false,
+            message: 'เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลัก ในรูปแบบ 000-000-0000',
+          });
+          return;
+        }
+        normalizedPhone = result.phone;
+      }
     }
 
     const updated = await prisma.user.update({
@@ -314,8 +400,8 @@ router.put('/:id', authenticateToken, requireRole(UserRole.ADMIN), async (req: A
       data: {
         fullName: full_name !== undefined ? full_name : undefined,
         email: email !== undefined ? email : undefined,
-        department: department !== undefined ? department : undefined,
-        phone: phone !== undefined ? phone : undefined,
+        department: normalizedDepartment,
+        phone: normalizedPhone,
         role: role && Object.values(UserRole).includes(role) ? (role as UserRole) : undefined,
         sessionVersion: role && role !== user.role ? { increment: 1 } : undefined,
       },
