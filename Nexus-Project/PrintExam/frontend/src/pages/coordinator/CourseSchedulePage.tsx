@@ -23,10 +23,21 @@ import {
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 import { localizedApiError } from '../../api/localizedError';
+import {
+  formatCalendarDate,
+  getLatestAllowedDeadlineDate,
+  isDeadlineAtLeastTwoDaysBeforeExam,
+  normalizeStoredCalendarDate,
+  reconcileDeadlineDate,
+} from '../../utils/examScheduleDeadline';
 
 // Helper to format Date to strict YYYY-MM-DD
 const toDateInputValue = (val?: string | Date): string => {
   if (!val) return '';
+  if (typeof val === 'string') {
+    const normalized = normalizeStoredCalendarDate(val);
+    if (normalized) return normalized;
+  }
   const d = typeof val === 'string' ? new Date(val) : val;
   if (isNaN(d.getTime())) return '';
   const year = d.getFullYear();
@@ -38,14 +49,7 @@ const toDateInputValue = (val?: string | Date): string => {
 // Helper for Thai full date display
 const formatThaiDateFull = (val?: string): string => {
   if (!val) return '';
-  const d = new Date(val);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  return formatCalendarDate(val, i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH');
 };
 
 export const CourseSchedulePage: React.FC = () => {
@@ -76,6 +80,10 @@ export const CourseSchedulePage: React.FC = () => {
   const [section, setSection] = useState('');
   const [deadlineDate, setDeadlineDate] = useState('');
   const [editingSchedId, setEditingSchedId] = useState<number | null>(null);
+  const latestDeadlineDate = getLatestAllowedDeadlineDate(schedDate);
+  const deadlineDateInvalid = Boolean(
+    deadlineDate && schedDate && !isDeadlineAtLeastTwoDaysBeforeExam(deadlineDate, schedDate),
+  );
 
   const fetchData = async () => {
     try {
@@ -130,14 +138,7 @@ export const CourseSchedulePage: React.FC = () => {
 
   const handleExamDateChange = (val: string) => {
     setSchedDate(val);
-    if (val) {
-      const examD = new Date(val);
-      if (!isNaN(examD.getTime())) {
-        const deadline = new Date(examD);
-        deadline.setDate(deadline.getDate() - 5);
-        setDeadlineDate(toDateInputValue(deadline));
-      }
-    }
+    setDeadlineDate((currentDeadline) => reconcileDeadlineDate(currentDeadline, val));
   };
 
   // Save Schedule
@@ -151,8 +152,8 @@ export const CourseSchedulePage: React.FC = () => {
       toast.warning(t("เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่มสอบ"));
       return;
     }
-    if (deadlineDate >= schedDate) {
-      toast.warning(t("Deadline ต้องอยู่ก่อนวันสอบ"));
+    if (!isDeadlineAtLeastTwoDaysBeforeExam(deadlineDate, schedDate)) {
+      toast.warning(t('กำหนดส่งต้องอยู่ก่อนวันสอบอย่างน้อย 2 วัน'));
       return;
     }
     const alreadyScheduled = !editingSchedId && schedules.some((schedule) => schedule.course_id === Number(schedCourseId));
@@ -709,15 +710,27 @@ export const CourseSchedulePage: React.FC = () => {
               type="date"
               value={deadlineDate}
               onChange={(e) => setDeadlineDate(e.target.value)}
-              max={schedDate || undefined}
+              max={latestDeadlineDate || undefined}
               required
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold"
             />
-            {deadlineDate && (
-              <div className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 font-medium">
-                {t('Deadline:')} {formatThaiDateFull(deadlineDate)}  {t("(อาจารย์สามารถแก้ไขข้อสอบได้ก่อนกำหนดนี้อย่างน้อย 2 วัน)")}
-              </div>
-            )}
+            <div className="mt-1 space-y-1 text-[11px] font-medium">
+              <p className="text-slate-500 dark:text-slate-400">
+                {t('กำหนดส่งต้องอยู่ก่อนวันสอบอย่างน้อย 2 วัน')}
+              </p>
+              {latestDeadlineDate && (
+                <p className="text-slate-500 dark:text-slate-400">
+                  {t('กำหนดส่งช้าที่สุด: {{date}} (ก่อนวันสอบอย่างน้อย 2 วัน)', {
+                    date: formatThaiDateFull(latestDeadlineDate),
+                  })}
+                </p>
+              )}
+              {deadlineDateInvalid && (
+                <p className="text-rose-600 dark:text-rose-400" role="alert">
+                  {t('กำหนดส่งต้องอยู่ก่อนวันสอบอย่างน้อย 2 วัน')}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">

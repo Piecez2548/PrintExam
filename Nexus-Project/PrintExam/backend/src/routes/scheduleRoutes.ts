@@ -5,6 +5,7 @@ import { requireRole } from '../middleware/rbac';
 import { UserRole, ExamType, ScheduleStatus, Prisma } from '../../generated/prisma';
 import { recordAuditLog } from '../middleware/audit';
 import { createNotification } from '../services/notificationService';
+import { isDeadlineAtLeastTwoDaysBeforeExam, normalizeStoredCalendarDate } from '../data/examScheduleDeadline';
 
 const router = Router();
 
@@ -162,8 +163,8 @@ router.post(
         res.status(400).json({ success: false, message: 'เวลาสิ้นสุดการสอบต้องอยู่หลังเวลาเริ่มสอบ' });
         return;
       }
-      if (new Date(String(deadline_date)) >= new Date(String(exam_date))) {
-        res.status(400).json({ success: false, message: 'กำหนดส่งข้อสอบต้องอยู่ก่อนวันสอบ' });
+      if (!isDeadlineAtLeastTwoDaysBeforeExam(deadline_date, exam_date)) {
+        res.status(400).json({ success: false, message: 'กำหนดส่งต้องอยู่ก่อนวันสอบอย่างน้อย 2 วัน' });
         return;
       }
       const existingSchedule = await prisma.examSchedule.findFirst({
@@ -279,10 +280,14 @@ router.put(
           return;
         }
       }
-      const nextExamDate = exam_date !== undefined ? String(exam_date) : current.examDate;
+      const nextExamDate = exam_date !== undefined
+        ? String(exam_date)
+        : normalizeStoredCalendarDate(current.examDate) ?? current.examDate;
       const nextStartTime = start_time !== undefined ? String(start_time) : current.startTime;
       const nextEndTime = end_time !== undefined ? String(end_time) : current.endTime;
-      const nextDeadline = deadline_date !== undefined ? String(deadline_date) : current.deadlineDate;
+      const nextDeadline = deadline_date !== undefined
+        ? String(deadline_date)
+        : normalizeStoredCalendarDate(current.deadlineDate) ?? current.deadlineDate;
       const nextRoom = room !== undefined ? String(room) : current.room;
       const nextExamType = exam_type && Object.values(ExamType).includes(exam_type) ? (exam_type as ExamType) : current.examType;
 
@@ -299,8 +304,8 @@ router.put(
         res.status(400).json({ success: false, message: 'เวลาสิ้นสุดการสอบต้องอยู่หลังเวลาเริ่มสอบ' });
         return;
       }
-      if (new Date(nextDeadline) >= new Date(nextExamDate)) {
-        res.status(400).json({ success: false, message: 'กำหนดส่งข้อสอบต้องอยู่ก่อนวันสอบ' });
+      if (!isDeadlineAtLeastTwoDaysBeforeExam(nextDeadline, nextExamDate)) {
+        res.status(400).json({ success: false, message: 'กำหนดส่งต้องอยู่ก่อนวันสอบอย่างน้อย 2 วัน' });
         return;
       }
       const scheduleConflict = await findScheduleConflict({
