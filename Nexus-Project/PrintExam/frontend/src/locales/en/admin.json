@@ -163,5 +163,13 @@
   "รหัสวิชา": "Course Code",
   "ชื่อวิชา": "Course Name",
   "วันสอบ": "Exam Date",
-  "เวลาสอบ": "Exam Time"
+  "เวลาสอบ": "Exam Time",
+  "userActions": {
+    "manage": "Manage",
+    "edit": "Edit user",
+    "resetPassword": "Reset password",
+    "suspend": "Suspend user",
+    "activate": "Activate user",
+    "closeAccount": "Close account"
+  }
 }
