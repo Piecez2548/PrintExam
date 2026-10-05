@@ -1,6 +1,8 @@
 import React from 'react';
 import { ExamStatus, ExamStatusHistory } from '../../types';
 import { CheckCircle2, Clock, XCircle, ChevronRight, User, Calendar } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
 
 interface StatusTimelineProps {
   currentStatus: ExamStatus;
@@ -17,6 +19,8 @@ const STEPS = [
 ];
 
 export const StatusTimeline: React.FC<StatusTimelineProps> = ({ currentStatus, history = [] }) => {
+  const { t } = useTranslation("common");
+
   const getStepIndex = (status: ExamStatus): number => {
     switch (status) {
       case ExamStatus.DRAFT: return -1;
@@ -38,7 +42,7 @@ export const StatusTimeline: React.FC<StatusTimelineProps> = ({ currentStatus, h
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
       <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2">
-        <span>ลำดับกระบวนการพิมพ์ข้อสอบ (Workflow Progress)</span>
+        <span>{t("ลำดับกระบวนการพิมพ์ข้อสอบ (Workflow Progress)")}</span>
       </h3>
 
       {/* Stepper Bar */}
@@ -63,7 +67,7 @@ export const StatusTimeline: React.FC<StatusTimelineProps> = ({ currentStatus, h
             >
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Step {idx + 1}
+                  {t('Step')} {idx + 1}
                 </span>
                 {isFailed ? (
                   <XCircle className="w-4 h-4 text-rose-500" />
@@ -80,10 +84,10 @@ export const StatusTimeline: React.FC<StatusTimelineProps> = ({ currentStatus, h
                 isDone ? 'text-emerald-800 dark:text-emerald-300' :
                 isCurrent ? 'text-sky-800 dark:text-sky-300' : 'text-slate-600 dark:text-slate-400'
               }`}>
-                {step.label}
+                {t(step.label)}
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                {step.sub}
+                {t(step.sub)}
               </div>
             </div>
           );
@@ -93,8 +97,9 @@ export const StatusTimeline: React.FC<StatusTimelineProps> = ({ currentStatus, h
       {/* History Log Timeline */}
       {history.length > 0 && (
         <div className="border-t border-slate-100 dark:border-slate-800 pt-5">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
-            ประวัติการเปลี่ยนสถานะและผู้ดำเนินการ (Audit Trail)
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
+
+            {t("ประวัติการเปลี่ยนสถานะและผู้ดำเนินการ (Audit Trail)")}
           </h4>
           <div className="space-y-3">
             {history.map((h, i) => (
@@ -102,16 +107,16 @@ export const StatusTimeline: React.FC<StatusTimelineProps> = ({ currentStatus, h
                 <div className="w-2 h-2 rounded-full bg-brand-500 mt-1.5 shrink-0" />
                 <div className="flex-1 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-200/70 dark:border-slate-800">
                   <div className="flex items-center justify-between font-medium text-slate-700 dark:text-slate-200">
-                    <span className="font-semibold text-brand-600 dark:text-brand-400">{h.to_status}</span>
+                  <span className="font-semibold text-brand-600 dark:text-brand-400">{t(`status.${h.to_status}`, { ns: 'statuses', defaultValue: h.to_status })}</span>
                     <span className="text-[11px] text-slate-400 flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
-                      {new Date(h.action_at).toLocaleString('th-TH')}
+                      {new Date(h.action_at).toLocaleString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH')}
                     </span>
                   </div>
                   {h.note && <div className="text-slate-600 dark:text-slate-300 mt-1">{h.note}</div>}
                   <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
                     <User className="w-3 h-3" />
-                    <span>ผู้ดำเนินการ: {h.action_name}</span>
+                    <span>{t("ผู้ดำเนินการ:")} {h.action_name}</span>
                   </div>
                 </div>
               </div>

@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
-import { STATUS_LABELS_TH, ExamStatus } from '../types';
 import { BACKEND_ORIGIN } from '../api/client';
+import { ExamStatus } from '../types';
+import { useTranslation } from 'react-i18next';
 
 interface WebSocketContextType {
   isConnected: boolean;
@@ -12,6 +13,8 @@ interface WebSocketContextType {
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
 export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { t } = useTranslation("common");
+
   const { user, isAuthenticated } = useAuth();
   const toast = useToast();
   const [isConnected, setIsConnected] = useState<boolean>(false);
@@ -60,19 +63,19 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
 
             if (data.event === 'EXAM_STATUS_CHANGED') {
               const { examId, toStatus, rejectionReason } = data.payload;
-              const statusLabel = STATUS_LABELS_TH[toStatus as ExamStatus] || toStatus;
+              const statusLabel = t(`status.${toStatus}`, { ns: 'statuses', defaultValue: toStatus });
 
               if (toStatus === ExamStatus.REJECTED) {
                 toast.error(
-                  `ข้อสอบ #${examId}: ไม่ผ่านตรวจสอบ`,
-                  `สาเหตุ: ${rejectionReason || 'โปรดตรวจสอบรายละเอียดในระบบ'}`
+                  t("ข้อสอบ #{{v0}}: ไม่ผ่านตรวจสอบ", { v0: examId }),
+                  t("สาเหตุ: {{v0}}", { v0: rejectionReason || t('โปรดตรวจสอบรายละเอียดในระบบ') })
                 );
               } else if (toStatus === ExamStatus.APPROVED) {
-                toast.success(`ข้อสอบ #${examId}: อนุมัติตัดข้อสอบแล้ว`, 'พร้อมเข้าสู่กระบวนการพิมพ์');
+                toast.success(t("ข้อสอบ #{{v0}}: อนุมัติตัดข้อสอบแล้ว", { v0: examId }), t("พร้อมเข้าสู่กระบวนการพิมพ์"));
               } else if (toStatus === ExamStatus.READY_FOR_PICKUP) {
-                toast.info(`ข้อสอบ #${examId}: พร้อมส่งมอบ`, 'เจ้าหน้าที่สามารถมารับซองข้อสอบได้แล้ว');
+                toast.info(t("ข้อสอบ #{{v0}}: พร้อมส่งมอบ", { v0: examId }), t("เจ้าหน้าที่สามารถมารับซองข้อสอบได้แล้ว"));
               } else {
-                toast.info(`อัปเดตสถานะข้อสอบ #${examId}`, `สถานะใหม่: ${statusLabel}`);
+                toast.info(t("อัปเดตสถานะข้อสอบ #{{v0}}", { v0: examId }), t("สถานะใหม่: {{v0}}", { v0: statusLabel }));
               }
             } else if (data.event === 'NEW_NOTIFICATION') {
               toast.info(data.payload.title, data.payload.message);

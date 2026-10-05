@@ -13,8 +13,13 @@ import {
   ShieldCheck,
   Send,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
+import { localizedApiError } from '../../api/localizedError';
 
 export const ExamPackPage: React.FC = () => {
+  const { t } = useTranslation("avStaff");
+
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const toast = useToast();
@@ -39,7 +44,7 @@ export const ExamPackPage: React.FC = () => {
       const data = await examsApi.getExamById(id);
       setExam(data);
     } catch (err: any) {
-      toast.error('ไม่สามารถโหลดข้อมูลได้', err.response?.data?.message);
+      toast.error(t("ไม่สามารถโหลดข้อมูลได้"), localizedApiError(err, t('An unexpected error occurred.')));
     } finally {
       setIsLoading(false);
     }
@@ -53,7 +58,7 @@ export const ExamPackPage: React.FC = () => {
     e.preventDefault();
     if (!id) return;
     if (!chkSeal || !chkLabel) {
-      toast.warning('กรุณายืนยันการปิดผนึกและติดใบปะหน้าซองให้ครบถ้วน');
+      toast.warning(t("กรุณายืนยันการปิดผนึกและติดใบปะหน้าซองให้ครบถ้วน"));
       return;
     }
 
@@ -64,17 +69,17 @@ export const ExamPackPage: React.FC = () => {
         notes: notes || 'บรรจุซองและปิดผนึกซีลเรียบร้อย',
       });
 
-      toast.success('บันทึกการบรรจุซองเรียบร้อยแล้ว', 'สถานะเปลี่ยนเป็น "บรรจุซองเรียบร้อย"');
+      toast.success(t("บันทึกการบรรจุซองเรียบร้อยแล้ว"), t("สถานะเปลี่ยนเป็น \"บรรจุซองเรียบร้อย\""));
       navigate('/av-staff/queue');
     } catch (err: any) {
-      toast.error('บันทึกการบรรจุซองไม่สำเร็จ', err.response?.data?.message);
+      toast.error(t("บันทึกการบรรจุซองไม่สำเร็จ"), localizedApiError(err, t('An unexpected error occurred.')));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (isLoading) return <div className="py-12 text-center text-slate-400">กำลังโหลดข้อมูล...</div>;
-  if (!exam) return <div className="py-12 text-center text-slate-500">ไม่พบข้อสอบ</div>;
+  if (isLoading) return <div className="py-12 text-center text-slate-400">{t("กำลังโหลดข้อมูล...")}</div>;
+  if (!exam) return <div className="py-12 text-center text-slate-500 dark:text-slate-400">{t("ไม่พบข้อสอบ")}</div>;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -83,19 +88,21 @@ export const ExamPackPage: React.FC = () => {
         <div className="flex items-center gap-3">
           <Link
             to="/av-staff/queue"
-            className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 hover:text-slate-900 transition-colors"
+            className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-                ยืนยันการบรรจุซองข้อสอบ
+
+                {t("ยืนยันการบรรจุซองข้อสอบ")}
               </h1>
               <StatusBadge status={exam.status} />
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              วิชา {exam.course_code} - {exam.course_name} | ห้องสอบ: {exam.room || 'ตามตาราง'}
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+
+              {t("วิชา")} {exam.course_code} - {exam.course_name}  {t("| ห้องสอบ:")} {exam.room || t("ตามตาราง")}
             </p>
           </div>
         </div>
@@ -105,7 +112,8 @@ export const ExamPackPage: React.FC = () => {
           className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl hover:bg-slate-50 shadow-xs"
         >
           <FileText className="w-4 h-4 text-brand-500" />
-          ดูใบปะหน้าซอง
+
+          {t("ดูใบปะหน้าซอง")}
         </button>
       </div>
 
@@ -114,23 +122,23 @@ export const ExamPackPage: React.FC = () => {
         {/* Info Grid */}
         <div className="bg-purple-50 dark:bg-purple-950/40 p-5 rounded-2xl border border-purple-200 dark:border-purple-800 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs text-purple-900 dark:text-purple-200">
           <div>
-            <span className="text-slate-500 dark:text-slate-400">จำนวนที่พิมพ์แล้ว:</span>
+            <span className="text-slate-500 dark:text-slate-400">{t("จำนวนที่พิมพ์แล้ว:")}</span>
             <div className="text-xl font-black text-purple-900 dark:text-purple-100 mt-0.5">
-              {exam.printed_copies ?? exam.print_records?.[0]?.printed_copies ?? exam.num_copies} ชุด
+              {exam.printed_copies ?? exam.print_records?.[0]?.printed_copies ?? exam.num_copies}  {t("ชุด")}
             </div>
           </div>
           <div>
-            <span className="text-slate-500 dark:text-slate-400">ห้องสอบ:</span>
-            <div className="text-sm font-bold text-purple-900 dark:text-purple-100 mt-0.5">{exam.room || 'ตามตาราง'}</div>
+            <span className="text-slate-500 dark:text-slate-400">{t("ห้องสอบ:")}</span>
+            <div className="text-sm font-bold text-purple-900 dark:text-purple-100 mt-0.5">{exam.room || t("ตามตาราง")}</div>
           </div>
           <div>
-            <span className="text-slate-500 dark:text-slate-400">วันสอบ:</span>
+            <span className="text-slate-500 dark:text-slate-400">{t("วันสอบ:")}</span>
             <div className="text-sm font-bold text-purple-900 dark:text-purple-100 mt-0.5">
-              {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString('th-TH') : '-'}
+              {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH') : '-'}
             </div>
           </div>
           <div>
-            <span className="text-slate-500 dark:text-slate-400">อาจารย์ผู้สอน:</span>
+            <span className="text-slate-500 dark:text-slate-400">{t("อาจารย์ผู้สอน:")}</span>
             <div className="text-sm font-bold text-purple-900 dark:text-purple-100 mt-0.5">{exam.instructor_name}</div>
           </div>
         </div>
@@ -138,7 +146,8 @@ export const ExamPackPage: React.FC = () => {
         <form onSubmit={handlePackSubmit} className="space-y-5 text-xs">
           <div>
             <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1.5">
-              จำนวนซองข้อสอบที่บรรจุ (Envelope Count) *
+
+              {t("จำนวนซองข้อสอบที่บรรจุ (Envelope Count) *")}
             </label>
             <input
               type="number"
@@ -149,7 +158,8 @@ export const ExamPackPage: React.FC = () => {
               className="w-full text-base font-extrabold text-purple-600 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2"
             />
             <p className="text-[11px] text-slate-400 mt-1">
-              (เช่น 1 ซอง หรือแบ่ง 2 ซองตามแถวที่นั่ง)
+
+              {t("(เช่น 1 ซอง หรือแบ่ง 2 ซองตามแถวที่นั่ง)")}
             </p>
           </div>
 
@@ -157,7 +167,7 @@ export const ExamPackPage: React.FC = () => {
           <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
             <h4 className="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-purple-600" />
-              <span>การตรวจสอบความปลอดภัยของซองข้อสอบ</span>
+              <span>{t("การตรวจสอบความปลอดภัยของซองข้อสอบ")}</span>
             </h4>
 
             <label className="flex items-center gap-2.5 cursor-pointer">
@@ -168,7 +178,8 @@ export const ExamPackPage: React.FC = () => {
                 className="w-4 h-4 text-purple-600 rounded"
               />
               <span className="font-medium text-slate-700 dark:text-slate-300">
-                1. ติดใบปะหน้าซองข้อสอบ (FORM EXAM-01) ครบถ้วน ระบุวิชา ห้องสอบ และจำนวนถูกต้อง
+
+                {t("1. ติดใบปะหน้าซองข้อสอบ (FORM EXAM-01) ครบถ้วน ระบุวิชา ห้องสอบ และจำนวนถูกต้อง")}
               </span>
             </label>
 
@@ -180,18 +191,20 @@ export const ExamPackPage: React.FC = () => {
                 className="w-4 h-4 text-purple-600 rounded"
               />
               <span className="font-medium text-slate-700 dark:text-slate-300">
-                2. ปิดผนึกฝาซองด้วยสติกเกอร์ซีลความปลอดภัย (Security Seal) และลงนามกำกับเรียบร้อย
+
+                {t("2. ปิดผนึกฝาซองด้วยสติกเกอร์ซีลความปลอดภัย (Security Seal) และลงนามกำกับเรียบร้อย")}
               </span>
             </label>
           </div>
 
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              บันทึกการบรรจุซอง / หมายเหตุ
+
+              {t("บันทึกการบรรจุซอง / หมายเหตุ")}
             </label>
             <input
               type="text"
-              placeholder="เช่น บรรจุ 1 ซองใหญ่ ซองละ 120 ชุด..."
+              placeholder={t("เช่น บรรจุ 1 ซองใหญ่ ซองละ 120 ชุด...")}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
@@ -205,7 +218,7 @@ export const ExamPackPage: React.FC = () => {
               className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold shadow-md shadow-purple-500/25 transition-all flex items-center gap-2 text-xs disabled:opacity-50"
             >
               <PackageCheck className="w-4 h-4" />
-              {isSubmitting ? 'กำลังบันทึก...' : 'ยืนยันบรรจุซองข้อสอบ (Confirm Packing)'}
+              {isSubmitting ? t("กำลังบันทึก...") : t("ยืนยันบรรจุซองข้อสอบ (Confirm Packing)")}
             </button>
           </div>
         </form>

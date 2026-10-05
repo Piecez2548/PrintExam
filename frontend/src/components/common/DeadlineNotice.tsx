@@ -1,12 +1,16 @@
 import React from 'react';
 import { AlertTriangle, Lock, CheckCircle } from 'lucide-react';
 import { Exam } from '../../types';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
 
 interface DeadlineNoticeProps {
   exam: Exam;
 }
 
 export const DeadlineNotice: React.FC<DeadlineNoticeProps> = ({ exam }) => {
+  const { t } = useTranslation("common");
+
   const canEdit = exam.can_edit_or_cancel;
   const reason = exam.edit_restriction_reason;
 
@@ -20,13 +24,14 @@ export const DeadlineNotice: React.FC<DeadlineNoticeProps> = ({ exam }) => {
         <Lock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
         <div className="text-xs sm:text-sm">
           <div className="font-bold flex items-center gap-1.5">
-            <span>เงื่อนไขการแก้ไข/ยกเลิก: ล็อคการแก้ไขแล้ว</span>
+            <span>{t("เงื่อนไขการแก้ไข/ยกเลิก: ล็อคการแก้ไขแล้ว")}</span>
           </div>
           <div className="mt-1 text-amber-800 dark:text-amber-300 leading-relaxed">
-            {reason || 'ไม่อนุญาตให้แก้ไขหรือยกเลิกข้อสอบหลังสถานะตัดข้อสอบ หรือน้อยกว่า 2 วันก่อน Deadline'}
+            {reason || t("ไม่อนุญาตให้แก้ไขหรือยกเลิกข้อสอบหลังสถานะตัดข้อสอบ หรือน้อยกว่า 2 วันก่อน Deadline")}
           </div>
           <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-            • กำหนดส่ง (Deadline): {deadlineDate.toLocaleDateString('th-TH', { dateStyle: 'medium' })} {deadlineDate.toLocaleTimeString('th-TH', { timeStyle: 'short' })} น.
+
+            {t("• กำหนดส่ง (Deadline):")} {deadlineDate.toLocaleDateString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH', { dateStyle: 'medium' })} {deadlineDate.toLocaleTimeString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH', { timeStyle: 'short' })}  {t("น.")}
           </div>
         </div>
       </div>
@@ -38,10 +43,12 @@ export const DeadlineNotice: React.FC<DeadlineNoticeProps> = ({ exam }) => {
       <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
       <div className="text-xs sm:text-sm">
         <div className="font-bold">
-          สามารถแก้ไขหรือยกเลิกข้อสอบได้ (ก่อนตัดข้อสอบและล่วงหน้า ≥ 2 วัน)
+
+          {t("สามารถแก้ไขหรือยกเลิกข้อสอบได้ (ก่อนตัดข้อสอบและล่วงหน้า ≥ 2 วัน)")}
         </div>
         <div className="mt-1 text-emerald-800 dark:text-emerald-300 text-xs">
-          เหลือเวลาแก้ไขได้อีกประมาณ {diffDays > 0 ? `${diffDays} วัน` : 'ไม่กี่ชั่วโมง'} (Deadline: {deadlineDate.toLocaleDateString('th-TH')})
+
+          {t("เหลือเวลาแก้ไขได้อีกประมาณ")} {diffDays > 0 ? t("{{v0}} วัน", { v0: diffDays }) : t("ไม่กี่ชั่วโมง")} ({t('Deadline:')} {deadlineDate.toLocaleDateString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH')})
         </div>
       </div>
     </div>

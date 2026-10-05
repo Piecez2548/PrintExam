@@ -19,8 +19,13 @@ import {
   Clock,
   Download,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
+import { localizedApiError } from '../../api/localizedError';
 
 export const AvQueuePage: React.FC = () => {
+  const { t } = useTranslation("avStaff");
+
   const [exams, setExams] = useState<Exam[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'validate' | 'print' | 'pack' | 'pickup'>('validate');
@@ -68,10 +73,10 @@ export const AvQueuePage: React.FC = () => {
   const handleMarkReadyForPickup = async (examId: number) => {
     try {
       await examsApi.readyForPickup(examId, { pickup_location: 'หน่วยโสตทัศนศึกษา ชั้น 2' });
-      toast.success('แจ้งพร้อมส่งมอบเรียบร้อย', 'ส่งการแจ้งเตือนไปยังเจ้าหน้าที่ดำเนินการสอบแล้ว');
+      toast.success(t("แจ้งพร้อมส่งมอบเรียบร้อย"), t("ส่งการแจ้งเตือนไปยังเจ้าหน้าที่ดำเนินการสอบแล้ว"));
       fetchExams();
     } catch (err: any) {
-      toast.error('ไม่สามารถอัปเดตได้', err.response?.data?.message);
+      toast.error(t("ไม่สามารถอัปเดตได้"), localizedApiError(err, t('An unexpected error occurred.')));
     }
   };
 
@@ -82,10 +87,11 @@ export const AvQueuePage: React.FC = () => {
         <div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
             <ListTodo className="w-6 h-6 text-amber-500" />
-            <span>คิวงานพิมพ์ข้อสอบ (เจ้าหน้าที่หน่วยโสต)</span>
+            <span>{t("คิวงานพิมพ์ข้อสอบ (เจ้าหน้าที่หน่วยโสต)")}</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            กระบวนการ: ตรวจสอบไฟล์ → ตัดข้อสอบ → พิมพ์ → ใบปะหน้าซอง → บรรจุซอง → ส่งมอบ
+
+            {t("กระบวนการ: ตรวจสอบไฟล์ → ตัดข้อสอบ → พิมพ์ → ใบปะหน้าซอง → บรรจุซอง → ส่งมอบ")}
           </p>
         </div>
       </div>
@@ -101,7 +107,7 @@ export const AvQueuePage: React.FC = () => {
           }`}
         >
           <Clock className="w-4 h-4" />
-          <span>1. รอตรวจสอบไฟล์</span>
+          <span>{t("1. รอตรวจสอบไฟล์")}</span>
           <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
             {toValidateExams.length}
           </span>
@@ -116,7 +122,7 @@ export const AvQueuePage: React.FC = () => {
           }`}
         >
           <Printer className="w-4 h-4" />
-          <span>2. รอจัดพิมพ์ (ตัดข้อสอบแล้ว)</span>
+          <span>{t("2. รอจัดพิมพ์ (ตัดข้อสอบแล้ว)")}</span>
           <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
             {toPrintExams.length}
           </span>
@@ -131,7 +137,7 @@ export const AvQueuePage: React.FC = () => {
           }`}
         >
           <PackageCheck className="w-4 h-4" />
-          <span>3. รอบรรจุซอง</span>
+          <span>{t("3. รอบรรจุซอง")}</span>
           <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
             {toPackExams.length}
           </span>
@@ -146,7 +152,7 @@ export const AvQueuePage: React.FC = () => {
           }`}
         >
           <Send className="w-4 h-4" />
-          <span>4. พร้อมส่งมอบ / ส่งแล้ว</span>
+          <span>{t("4. พร้อมส่งมอบ / ส่งแล้ว")}</span>
           <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
             {pickupExams.length}
           </span>
@@ -157,27 +163,29 @@ export const AvQueuePage: React.FC = () => {
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
+            <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="py-3.5 px-4">รหัสวิชา & รายวิชา</th>
-                <th className="py-3.5 px-4">อาจารย์ผู้สอน</th>
-                <th className="py-3.5 px-4">วัน-เวลาสอบ & ห้อง</th>
-                <th className="py-3.5 px-4">จำนวนพิมพ์ / รูปแบบ</th>
-                <th className="py-3.5 px-4">สถานะ</th>
-                <th className="py-3.5 px-4 text-right">ดำเนินการ</th>
+                <th className="py-3.5 px-4">{t("รหัสวิชา & รายวิชา")}</th>
+                <th className="py-3.5 px-4">{t("อาจารย์ผู้สอน")}</th>
+                <th className="py-3.5 px-4">{t("วัน-เวลาสอบ & ห้อง")}</th>
+                <th className="py-3.5 px-4">{t("จำนวนพิมพ์ / รูปแบบ")}</th>
+                <th className="py-3.5 px-4">{t("สถานะ")}</th>
+                <th className="py-3.5 px-4 text-right">{t("ดำเนินการ")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {isLoading ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
-                    กำลังโหลดข้อมูลคิวงาน...
+
+                    {t("กำลังโหลดข้อมูลคิวงาน...")}
                   </td>
                 </tr>
               ) : getActiveList().length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
-                    ไม่มีรายการในคิวนี้ขณะนี้
+
+                    {t("ไม่มีรายการในคิวนี้ขณะนี้")}
                   </td>
                 </tr>
               ) : (
@@ -203,21 +211,21 @@ export const AvQueuePage: React.FC = () => {
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="font-medium text-slate-800 dark:text-slate-200">
-                        {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString('th-TH') : 'ตามตาราง'}
+                        {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH') : t("ตามตาราง")}
                       </div>
-                      <div className="text-[11px] text-slate-500">
-                        {exam.start_time && exam.end_time ? `${exam.start_time}-${exam.end_time} น.` : ''}
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {exam.start_time && exam.end_time ? t("{{v0}}-{{v1}} น.", { v0: exam.start_time, v1: exam.end_time }) : ''}
                       </div>
                       <div className="text-[11px] font-semibold text-rose-600">
-                        {exam.room || 'ตามตาราง'}
+                        {exam.room || t("ตามตาราง")}
                       </div>
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="font-extrabold text-slate-900 dark:text-slate-100">
-                        {exam.num_copies > 0 ? `${exam.num_copies} ชุด` : 'ยังไม่ระบุจำนวน'} ({exam.num_pages || 1} หน้า)
+                        {exam.num_copies > 0 ? t("{{v0}} ชุด", { v0: exam.num_copies }) : t("ยังไม่ระบุจำนวน")} ({exam.num_pages || 1}  {t("หน้า)")}
                       </div>
                       <div className="text-[11px] text-slate-400">
-                        {exam.is_double_sided ? 'หน้า-หลัง' : 'หน้าเดียว'} [{exam.paper_size}]
+                        {exam.is_double_sided ? t("หน้า-หลัง") : t("หน้าเดียว")} [{exam.paper_size}]
                       </div>
                     </td>
                     <td className="py-3.5 px-4">
@@ -231,7 +239,8 @@ export const AvQueuePage: React.FC = () => {
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-xs"
                         >
                           <FileCheck className="w-3.5 h-3.5" />
-                          ตรวจไฟล์ & ตัดข้อสอบ
+
+                          {t("ตรวจไฟล์ & ตัดข้อสอบ")}
                         </Link>
                       )}
 
@@ -241,7 +250,8 @@ export const AvQueuePage: React.FC = () => {
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold transition-all shadow-xs"
                         >
                           <Printer className="w-3.5 h-3.5" />
-                          บันทึกการพิมพ์ & ใบปะหน้า
+
+                          {t("บันทึกการพิมพ์ & ใบปะหน้า")}
                         </Link>
                       )}
 
@@ -251,7 +261,8 @@ export const AvQueuePage: React.FC = () => {
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold transition-all shadow-xs"
                         >
                           <PackageCheck className="w-3.5 h-3.5" />
-                          ยืนยันบรรจุซอง
+
+                          {t("ยืนยันบรรจุซอง")}
                         </Link>
                       )}
 
@@ -263,15 +274,17 @@ export const AvQueuePage: React.FC = () => {
                               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-bold transition-all shadow-xs"
                             >
                               <Send className="w-3.5 h-3.5" />
-                              แจ้งพร้อมส่งมอบ
+
+                              {t("แจ้งพร้อมส่งมอบ")}
                             </button>
                           )}
                           <button
                             onClick={() => setSelectedExamForEnvelope(exam)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 dark:text-slate-300 hover:bg-slate-200 font-medium"
                           >
                             <FileText className="w-3.5 h-3.5" />
-                            ใบปะหน้า
+
+                            {t("ใบปะหน้า")}
                           </button>
                         </>
                       )}

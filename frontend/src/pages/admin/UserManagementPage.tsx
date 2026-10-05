@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PasswordResetRequestItem, usersApi } from '../../api/users';
-import { User, UserRole, ROLE_LABELS_TH } from '../../types';
+import { User, UserRole } from '../../types';
 import { RoleBadge } from '../../components/common/RoleBadge';
 import { Modal } from '../../components/common/Modal';
 import { useToast } from '../../context/ToastContext';
@@ -20,8 +20,13 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { localizedApiError } from '../../api/localizedError';
+import i18n from '../../i18n';
 
 export const UserManagementPage: React.FC = () => {
+  const { t } = useTranslation("admin");
+
   const toast = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -93,7 +98,7 @@ export const UserManagementPage: React.FC = () => {
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !fullName || !email) {
-      toast.warning('กรุณากรอกข้อมูลให้ครบถ้วน');
+      toast.warning(t("กรุณากรอกข้อมูลให้ครบถ้วน"));
       return;
     }
 
@@ -107,7 +112,7 @@ export const UserManagementPage: React.FC = () => {
           department,
           phone,
         });
-        toast.success('อัปเดตข้อมูลผู้ใช้งานสำเร็จ');
+        toast.success(t("อัปเดตข้อมูลผู้ใช้งานสำเร็จ"));
       } else {
         await usersApi.createUser({
           username,
@@ -118,13 +123,13 @@ export const UserManagementPage: React.FC = () => {
           department,
           phone,
         });
-        toast.success('สร้างบัญชีผู้ใช้ใหม่เรียบร้อยแล้ว');
+        toast.success(t("สร้างบัญชีผู้ใช้ใหม่เรียบร้อยแล้ว"));
       }
       setIsModalOpen(false);
       resetForm();
       fetchUsers();
     } catch (err: any) {
-      toast.error('ไม่สามารถบันทึกได้', err.response?.data?.message);
+      toast.error(t("ไม่สามารถบันทึกได้"), localizedApiError(err, t('An unexpected error occurred.')));
     } finally {
       setIsSubmitting(false);
     }
@@ -133,10 +138,10 @@ export const UserManagementPage: React.FC = () => {
   const handleToggleSuspend = async (user: User) => {
     try {
       const res = await usersApi.toggleSuspend(user.id);
-      toast.success(res.message);
+      toast.success(t(user.is_active ? 'Account suspended.' : 'Account enabled.'));
       fetchUsers();
     } catch (err: any) {
-      toast.error('เกิดข้อผิดพลาด', err.response?.data?.message);
+      toast.error(t("เกิดข้อผิดพลาด"), localizedApiError(err, t('An unexpected error occurred.')));
     }
   };
 
@@ -145,12 +150,12 @@ export const UserManagementPage: React.FC = () => {
     setIsDeleting(true);
     try {
       const res = await usersApi.deleteUser(userToDelete.id);
-      toast.success(res.message);
+      toast.success(t('Account deactivated.'));
       setIsDeleteModalOpen(false);
       setUserToDelete(null);
       fetchUsers();
     } catch (err: any) {
-      toast.error('ไม่สามารถปิดใช้งานบัญชีได้', err.response?.data?.message);
+      toast.error(t("ไม่สามารถปิดใช้งานบัญชีได้"), localizedApiError(err, t('An unexpected error occurred.')));
     } finally {
       setIsDeleting(false);
     }
@@ -178,24 +183,24 @@ export const UserManagementPage: React.FC = () => {
     event.preventDefault();
     if (!resetPasswordUser) return;
     if (temporaryPassword.length < 12) {
-      toast.warning('รหัสผ่านต้องยาวอย่างน้อย 12 ตัว และมีตัวพิมพ์ใหญ่ พิมพ์เล็ก ตัวเลข และอักขระพิเศษ');
+      toast.warning(t("รหัสผ่านต้องยาวอย่างน้อย 12 ตัว และมีตัวพิมพ์ใหญ่ พิมพ์เล็ก ตัวเลข และอักขระพิเศษ"));
       return;
     }
     if (temporaryPassword !== confirmTemporaryPassword) {
-      toast.warning('รหัสผ่านชั่วคราวและการยืนยันไม่ตรงกัน');
+      toast.warning(t("รหัสผ่านชั่วคราวและการยืนยันไม่ตรงกัน"));
       return;
     }
     try {
       setIsResettingPassword(true);
       const result = await usersApi.resetPassword(resetPasswordUser.id, temporaryPassword, adminPassword);
-      toast.success('ตั้งรหัสผ่านชั่วคราวแล้ว', result.message);
+      toast.success(t("ตั้งรหัสผ่านชั่วคราวแล้ว"));
       setResetPasswordUser(null);
       setTemporaryPassword('');
       setConfirmTemporaryPassword('');
       setAdminPassword('');
       fetchUsers();
     } catch (error: any) {
-      toast.error('ตั้งรหัสผ่านไม่สำเร็จ', error.response?.data?.message || 'กรุณาลองใหม่อีกครั้ง');
+      toast.error(t("ตั้งรหัสผ่านไม่สำเร็จ"), localizedApiError(error, t('An unexpected error occurred.')));
     } finally {
       setIsResettingPassword(false);
     }
@@ -208,10 +213,11 @@ export const UserManagementPage: React.FC = () => {
         <div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
             <Users className="w-6 h-6 text-purple-600" />
-            <span>จัดการผู้ใช้งานและกำหนดสิทธิ์</span>
+            <span>{t("จัดการผู้ใช้งานและกำหนดสิทธิ์")}</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            เพิ่ม แก้ไข ปิดใช้งาน และกำหนดบทบาทผู้ใช้งาน โดยเก็บประวัติการทำงานไว้
+
+            {t("เพิ่ม แก้ไข ปิดใช้งาน และกำหนดบทบาทผู้ใช้งาน โดยเก็บประวัติการทำงานไว้")}
           </p>
         </div>
 
@@ -223,14 +229,15 @@ export const UserManagementPage: React.FC = () => {
           className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-500/25 transition-all"
         >
           <UserPlus className="w-4 h-4" />
-          เพิ่มผู้ใช้งานใหม่
+
+          {t("เพิ่มผู้ใช้งานใหม่")}
         </button>
       </div>
 
       {passwordResetRequests.length > 0 && (
         <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
           <div className="flex items-center gap-2 font-bold text-amber-900 dark:text-amber-200">
-            <KeyRound className="h-5 w-5" /> คำขอลืมรหัสผ่านที่รอดำเนินการ ({passwordResetRequests.length})
+            <KeyRound className="h-5 w-5" />  {t("คำขอลืมรหัสผ่านที่รอดำเนินการ (")}{passwordResetRequests.length})
           </div>
           <div className="mt-3 grid gap-2 md:grid-cols-2">
             {passwordResetRequests.map((request) => {
@@ -239,14 +246,14 @@ export const UserManagementPage: React.FC = () => {
                 <div key={request.id} className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white p-3 text-xs dark:border-amber-900 dark:bg-slate-900">
                   <div>
                     <div className="font-bold text-slate-900 dark:text-white">{request.full_name} ({request.username})</div>
-                    <div className="mt-1 text-slate-500">ขอเมื่อ {new Date(request.requested_at).toLocaleString('th-TH')}</div>
+                    <div className="mt-1 text-slate-500 dark:text-slate-400">{t("ขอเมื่อ")} {new Date(request.requested_at).toLocaleString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH')}</div>
                   </div>
                   <button
                     type="button"
                     disabled={!target}
                     onClick={() => target && openResetPasswordModal(target)}
                     className="shrink-0 rounded-lg bg-amber-600 px-3 py-2 font-bold text-white hover:bg-amber-700 disabled:opacity-50"
-                  >ตั้งรหัสชั่วคราว</button>
+                  >{t("ตั้งรหัสชั่วคราว")}</button>
                 </div>
               );
             })}
@@ -260,7 +267,7 @@ export const UserManagementPage: React.FC = () => {
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="ค้นหาชื่อ, Username, อีเมล หรือสังกัด..."
+            placeholder={t("ค้นหาชื่อ, Username, อีเมล หรือสังกัด...")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
@@ -273,11 +280,11 @@ export const UserManagementPage: React.FC = () => {
             onChange={(e) => setRoleFilter(e.target.value)}
             className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 font-medium"
           >
-            <option value="">ทุกบทบาท (All Roles)</option>
-            <option value={UserRole.INSTRUCTOR}>อาจารย์ผู้สอน</option>
-            <option value={UserRole.AV_STAFF}>เจ้าหน้าที่หน่วยโสต</option>
-            <option value={UserRole.COORDINATOR}>จนท.ดำเนินการสอบ</option>
-            <option value={UserRole.ADMIN}>ผู้ดูแลระบบ</option>
+            <option value="">{t("ทุกบทบาท (All Roles)")}</option>
+            <option value={UserRole.INSTRUCTOR}>{t("อาจารย์ผู้สอน")}</option>
+            <option value={UserRole.AV_STAFF}>{t("เจ้าหน้าที่หน่วยโสต")}</option>
+            <option value={UserRole.COORDINATOR}>{t("จนท.ดำเนินการสอบ")}</option>
+            <option value={UserRole.ADMIN}>{t("ผู้ดูแลระบบ")}</option>
           </select>
 
           <select
@@ -285,9 +292,9 @@ export const UserManagementPage: React.FC = () => {
             onChange={(e) => setStatusFilter(e.target.value)}
             className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 font-medium"
           >
-            <option value="">ทุกสถานะ</option>
-            <option value="active">เปิดใช้งาน (Active)</option>
-            <option value="0">ระงับใช้งาน (Suspended)</option>
+            <option value="">{t("ทุกสถานะ")}</option>
+            <option value="active">{t("เปิดใช้งาน (Active)")}</option>
+            <option value="0">{t("ระงับใช้งาน (Suspended)")}</option>
           </select>
         </div>
       </div>
@@ -296,27 +303,29 @@ export const UserManagementPage: React.FC = () => {
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
+            <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="py-3.5 px-4">ชื่อ-สกุล & Username</th>
-                <th className="py-3.5 px-4">บทบาท (Role)</th>
-                <th className="py-3.5 px-4">อีเมล & เบอร์โทร</th>
-                <th className="py-3.5 px-4">สังกัด / ภาควิชา</th>
-                <th className="py-3.5 px-4">สถานะ</th>
-                <th className="py-3.5 px-4 text-right">การจัดการ</th>
+                <th className="py-3.5 px-4">{t("ชื่อ-สกุล & Username")}</th>
+                <th className="py-3.5 px-4">{t("บทบาท (Role)")}</th>
+                <th className="py-3.5 px-4">{t("อีเมล & เบอร์โทร")}</th>
+                <th className="py-3.5 px-4">{t("สังกัด / ภาควิชา")}</th>
+                <th className="py-3.5 px-4">{t("สถานะ")}</th>
+                <th className="py-3.5 px-4 text-right">{t("การจัดการ")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {isLoading ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
-                    กำลังโหลดข้อมูลผู้ใช้...
+
+                    {t("กำลังโหลดข้อมูลผู้ใช้...")}
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
-                    ไม่พบข้อมูลผู้ใช้งาน
+
+                    {t("ไม่พบข้อมูลผู้ใช้งาน")}
                   </td>
                 </tr>
               ) : (
@@ -326,7 +335,7 @@ export const UserManagementPage: React.FC = () => {
                       <div className="font-bold text-slate-900 dark:text-slate-100 text-sm">
                         {u.full_name}
                       </div>
-                      <div className="text-[11px] text-slate-400">Username: {u.username}</div>
+                      <div className="text-[11px] text-slate-400">{t('Username:')} {u.username}</div>
                     </td>
                     <td className="py-3.5 px-4">
                       <RoleBadge role={u.role} />
@@ -341,11 +350,11 @@ export const UserManagementPage: React.FC = () => {
                     <td className="py-3.5 px-4">
                       {u.is_active ? (
                         <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-semibold text-[11px]">
-                          <CheckCircle2 className="w-3 h-3" /> เปิดใช้งาน
+                          <CheckCircle2 className="w-3 h-3" />  {t("เปิดใช้งาน")}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-rose-700 bg-rose-50 px-2 py-0.5 rounded font-semibold text-[11px]">
-                          <XCircle className="w-3 h-3" /> ระงับการใช้งาน
+                          <XCircle className="w-3 h-3" />  {t("ระงับการใช้งาน")}
                         </span>
                       )}
                     </td>
@@ -361,15 +370,16 @@ export const UserManagementPage: React.FC = () => {
                           setPhone(u.phone || '');
                           setIsModalOpen(true);
                         }}
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium"
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 dark:text-slate-300 hover:bg-slate-200 font-medium"
                       >
-                        แก้ไข
+
+                        {t("แก้ไข")}
                       </button>
                       <button
                         onClick={() => openResetPasswordModal(u)}
                         className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1 font-medium text-blue-700 hover:bg-blue-100"
                       >
-                        <KeyRound className="h-3.5 w-3.5" /> รีเซ็ตรหัส
+                        <KeyRound className="h-3.5 w-3.5" />  {t("รีเซ็ตรหัส")}
                       </button>
                       <button
                         onClick={() => handleToggleSuspend(u)}
@@ -379,7 +389,7 @@ export const UserManagementPage: React.FC = () => {
                             : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                         }`}
                       >
-                        {u.is_active ? 'ระงับ' : 'เปิดใช้งาน'}
+                        {u.is_active ? t("ระงับ") : t("เปิดใช้งาน")}
                       </button>
                       <button
                         onClick={() => {
@@ -388,7 +398,8 @@ export const UserManagementPage: React.FC = () => {
                         }}
                         className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 font-medium"
                       >
-                        ปิดบัญชี
+
+                        {t("ปิดบัญชี")}
                       </button>
                     </td>
                   </tr>
@@ -403,27 +414,29 @@ export const UserManagementPage: React.FC = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingUserId ? 'แก้ไขข้อมูลผู้ใช้งาน' : 'เพิ่มผู้ใช้งานใหม่'}
+        title={editingUserId ? t("แก้ไขข้อมูลผู้ใช้งาน") : t("เพิ่มผู้ใช้งานใหม่")}
       >
         <form onSubmit={handleSaveUser} className="space-y-4 text-xs">
           {!editingUserId && (
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  ชื่อผู้ใช้ (Username) *
+
+                  {t("ชื่อผู้ใช้ (Username) *")}
                 </label>
                 <input
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
-                  placeholder="เช่น somchai.j"
+                  placeholder={t("เช่น somchai.j")}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
                 />
               </div>
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  รหัสผ่านเริ่มต้น (Default Password) *
+
+                  {t("รหัสผ่านเริ่มต้น (Default Password) *")}
                 </label>
                 <input
                   type="password"
@@ -432,7 +445,7 @@ export const UserManagementPage: React.FC = () => {
                   required
                   minLength={12}
                   autoComplete="new-password"
-                  placeholder="12+ ตัว: A-Z, a-z, 0-9 และอักขระพิเศษ"
+                  placeholder={t("12+ ตัว: A-Z, a-z, 0-9 และอักขระพิเศษ")}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
                 />
               </div>
@@ -441,14 +454,15 @@ export const UserManagementPage: React.FC = () => {
 
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              ชื่อ-นามสกุล (Full Name) *
+
+              {t("ชื่อ-นามสกุล (Full Name) *")}
             </label>
             <input
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               required
-              placeholder="เช่น รศ.ดร.สมชาย ใจดี"
+              placeholder={t("เช่น รศ.ดร.สมชาย ใจดี")}
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
             />
           </div>
@@ -456,7 +470,8 @@ export const UserManagementPage: React.FC = () => {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                อีเมล (Email) *
+
+                {t("อีเมล (Email) *")}
               </label>
               <input
                 type="email"
@@ -469,7 +484,8 @@ export const UserManagementPage: React.FC = () => {
             </div>
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                เบอร์โทรศัพท์
+
+                {t("เบอร์โทรศัพท์")}
               </label>
               <input
                 type="text"
@@ -484,28 +500,30 @@ export const UserManagementPage: React.FC = () => {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                บทบาทในระบบ (Role) *
+
+                {t("บทบาทในระบบ (Role) *")}
               </label>
               <select
                 value={role}
                 onChange={(e: any) => setRole(e.target.value)}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold"
               >
-                <option value={UserRole.INSTRUCTOR}>อาจารย์ผู้สอน (Instructor)</option>
-                <option value={UserRole.AV_STAFF}>เจ้าหน้าที่หน่วยโสต (AV Staff)</option>
-                <option value={UserRole.COORDINATOR}>จนท.ดำเนินการสอบ (Coordinator)</option>
-                <option value={UserRole.ADMIN}>ผู้ดูแลระบบ (Admin)</option>
+                <option value={UserRole.INSTRUCTOR}>{t("อาจารย์ผู้สอน (Instructor)")}</option>
+                <option value={UserRole.AV_STAFF}>{t("เจ้าหน้าที่หน่วยโสต (AV Staff)")}</option>
+                <option value={UserRole.COORDINATOR}>{t("จนท.ดำเนินการสอบ (Coordinator)")}</option>
+                <option value={UserRole.ADMIN}>{t("ผู้ดูแลระบบ (Admin)")}</option>
               </select>
             </div>
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                สังกัด / คณะ / ภาควิชา
+
+                {t("สังกัด / คณะ / ภาควิชา")}
               </label>
               <input
                 type="text"
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
-                placeholder="เช่น วิศวกรรมคอมพิวเตอร์"
+                placeholder={t("เช่น วิศวกรรมคอมพิวเตอร์")}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
               />
             </div>
@@ -515,16 +533,17 @@ export const UserManagementPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsModalOpen(false)}
-              className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-semibold"
+              className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 dark:text-slate-300 font-semibold"
             >
-              ยกเลิก
+
+              {t("ยกเลิก")}
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
               className="px-5 py-2 rounded-xl bg-purple-600 text-white font-bold hover:bg-purple-700 shadow-sm disabled:opacity-50"
             >
-              {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}
+              {isSubmitting ? t("กำลังบันทึก...") : t("บันทึกข้อมูล")}
             </button>
           </div>
         </form>
@@ -534,22 +553,22 @@ export const UserManagementPage: React.FC = () => {
       <Modal
         isOpen={Boolean(resetPasswordUser)}
         onClose={() => setResetPasswordUser(null)}
-        title="ตั้งรหัสผ่านชั่วคราว"
+        title={t("ตั้งรหัสผ่านชั่วคราว")}
         maxWidth="md"
       >
         {resetPasswordUser && (
           <form onSubmit={handleResetPassword} className="space-y-4 text-sm">
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
               <div className="font-bold">{resetPasswordUser.full_name}</div>
-              <div className="mt-1 text-xs">Username: {resetPasswordUser.username}</div>
-              <p className="mt-2 text-xs">โปรดตรวจสอบตัวตนของผู้ใช้ก่อนตั้งรหัสใหม่ และส่งรหัสผ่านชั่วคราวผ่านช่องทางที่ปลอดภัย ผู้ใช้จะถูกบังคับให้เปลี่ยนรหัสหลังเข้าสู่ระบบ</p>
+              <div className="mt-1 text-xs">{t('Username:')} {resetPasswordUser.username}</div>
+              <p className="mt-2 text-xs">{t("โปรดตรวจสอบตัวตนของผู้ใช้ก่อนตั้งรหัสใหม่ และส่งรหัสผ่านชั่วคราวผ่านช่องทางที่ปลอดภัย ผู้ใช้จะถูกบังคับให้เปลี่ยนรหัสหลังเข้าสู่ระบบ")}</p>
             </div>
 
             <div>
               <div className="mb-1.5 flex items-center justify-between gap-3">
-                <label className="font-semibold text-slate-700 dark:text-slate-200">รหัสผ่านชั่วคราว</label>
+                <label className="font-semibold text-slate-700 dark:text-slate-200">{t("รหัสผ่านชั่วคราว")}</label>
                 <button type="button" onClick={generateTemporaryPassword} className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:underline">
-                  <RefreshCw className="h-3.5 w-3.5" /> สร้างรหัสให้อัตโนมัติ
+                  <RefreshCw className="h-3.5 w-3.5" />  {t("สร้างรหัสให้อัตโนมัติ")}
                 </button>
               </div>
               <div className="relative">
@@ -561,13 +580,13 @@ export const UserManagementPage: React.FC = () => {
                   required
                   autoComplete="new-password"
                   className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 pr-20 font-mono text-sm dark:border-slate-700 dark:bg-slate-900"
-                  placeholder="12+ ตัว: A-Z, a-z, 0-9 และอักขระพิเศษ"
+                  placeholder={t("12+ ตัว: A-Z, a-z, 0-9 และอักขระพิเศษ")}
                 />
                 <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
-                  <button type="button" onClick={() => setShowTemporaryPassword((value) => !value)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label={showTemporaryPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}>
+                  <button type="button" onClick={() => setShowTemporaryPassword((value) => !value)} className="rounded-lg p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label={showTemporaryPassword ? t("ซ่อนรหัสผ่าน") : t("แสดงรหัสผ่าน")}>
                     {showTemporaryPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
-                  <button type="button" disabled={!temporaryPassword} onClick={() => void navigator.clipboard.writeText(temporaryPassword).then(() => toast.success('คัดลอกรหัสผ่านแล้ว'))} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800" aria-label="คัดลอกรหัสผ่าน">
+                  <button type="button" disabled={!temporaryPassword} onClick={() => void navigator.clipboard.writeText(temporaryPassword).then(() => toast.success(t("คัดลอกรหัสผ่านแล้ว")))} className="rounded-lg p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800" aria-label={t("คัดลอกรหัสผ่าน")}>
                     <Copy className="h-4 w-4" />
                   </button>
                 </div>
@@ -575,19 +594,21 @@ export const UserManagementPage: React.FC = () => {
             </div>
 
             <label className="block font-semibold text-slate-700 dark:text-slate-200">
-              ยืนยันรหัสผ่านชั่วคราว
+
+              {t("ยืนยันรหัสผ่านชั่วคราว")}
               <input type="password" value={confirmTemporaryPassword} onChange={(event) => setConfirmTemporaryPassword(event.target.value)} minLength={12} required autoComplete="new-password" className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900" />
             </label>
 
             <label className="block font-semibold text-slate-700 dark:text-slate-200">
-              รหัสผ่านของผู้ดูแลระบบเพื่อยืนยันการดำเนินการ
+
+              {t("รหัสผ่านของผู้ดูแลระบบเพื่อยืนยันการดำเนินการ")}
               <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} required autoComplete="current-password" className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900" />
             </label>
 
             <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
-              <button type="button" onClick={() => setResetPasswordUser(null)} className="rounded-xl bg-slate-100 px-4 py-2 font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">ยกเลิก</button>
+              <button type="button" onClick={() => setResetPasswordUser(null)} className="rounded-xl bg-slate-100 px-4 py-2 font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">{t("ยกเลิก")}</button>
               <button disabled={isResettingPassword} className="rounded-xl bg-blue-600 px-5 py-2 font-bold text-white hover:bg-blue-700 disabled:opacity-50">
-                {isResettingPassword ? 'กำลังตั้งรหัส...' : 'ยืนยันตั้งรหัสผ่านชั่วคราว'}
+                {isResettingPassword ? t("กำลังตั้งรหัส...") : t("ยืนยันตั้งรหัสผ่านชั่วคราว")}
               </button>
             </div>
           </form>
@@ -598,20 +619,23 @@ export const UserManagementPage: React.FC = () => {
       <Modal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
-        title="ยืนยันการปิดใช้งานบัญชี"
+        title={t("ยืนยันการปิดใช้งานบัญชี")}
         maxWidth="md"
       >
         {userToDelete && (
           <div className="space-y-4 text-xs">
             <div className="bg-rose-50 dark:bg-rose-950/40 p-4 rounded-2xl border border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200">
               <div className="font-bold text-sm">
-                คุณต้องการปิดใช้งานบัญชี "{userToDelete.full_name}" ({userToDelete.username}) หรือไม่?
+
+                {t("คุณต้องการปิดใช้งานบัญชี \"")}{userToDelete.full_name}" ({userToDelete.username}{t(") หรือไม่?")}
               </div>
               <div className="mt-1 text-xs text-rose-800 dark:text-rose-300">
-                อีเมล: {userToDelete.email} | บทบาท: {userToDelete.role} | สังกัด: {userToDelete.department || '-'}
+
+                {t("อีเมล:")} {userToDelete.email}  {t("| บทบาท:")} {t(`role.${userToDelete.role}`, { ns: 'statuses', defaultValue: userToDelete.role })}  {t("| สังกัด:")} {userToDelete.department || '-'}
               </div>
               <p className="mt-2 text-[11px] text-rose-700 dark:text-rose-400">
-                การดำเนินการนี้จะปิดใช้งานบัญชีและยกเลิก session ปัจจุบัน โดยยังเก็บรายวิชา ข้อสอบ และ Audit Log ไว้เป็นหลักฐาน
+
+                {t("การดำเนินการนี้จะปิดใช้งานบัญชีและยกเลิก session ปัจจุบัน โดยยังเก็บรายวิชา ข้อสอบ และ Audit Log ไว้เป็นหลักฐาน")}
               </p>
             </div>
 
@@ -619,9 +643,10 @@ export const UserManagementPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsDeleteModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-semibold"
+                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 dark:text-slate-300 font-semibold"
               >
-                ยกเลิก
+
+                {t("ยกเลิก")}
               </button>
               <button
                 type="button"
@@ -630,7 +655,7 @@ export const UserManagementPage: React.FC = () => {
                 className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition-colors shadow-sm disabled:opacity-50"
               >
                 <Trash2 className="w-4 h-4" />
-                {isDeleting ? 'กำลังปิดบัญชี...' : 'ยืนยันปิดใช้งาน'}
+                {isDeleting ? t("กำลังปิดบัญชี...") : t("ยืนยันปิดใช้งาน")}
               </button>
             </div>
           </div>

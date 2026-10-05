@@ -16,8 +16,12 @@ import {
   AlertCircle,
   Search,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
 
 export const InstructorDashboard: React.FC = () => {
+  const { t } = useTranslation("instructor");
+
   const [exams, setExams] = useState<Exam[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,10 +61,12 @@ export const InstructorDashboard: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
         <div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white">
-            แดชบอร์ดข้อสอบ (อาจารย์ผู้สอน)
+
+            {t("แดชบอร์ดข้อสอบ (อาจารย์ผู้สอน)")}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            ติดตามสถานะข้อสอบแบบ Real-time
+
+            {t("ติดตามสถานะข้อสอบแบบ Real-time")}
           </p>
         </div>
         <Link
@@ -68,7 +74,8 @@ export const InstructorDashboard: React.FC = () => {
           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-brand-500/25 transition-all"
         >
           <FilePlus2 className="w-4 h-4" />
-          ส่งข้อสอบใหม่
+
+          {t("ส่งข้อสอบใหม่")}
         </Link>
       </div>
 
@@ -76,7 +83,7 @@ export const InstructorDashboard: React.FC = () => {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-blue-600 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">รอตรวจสอบ</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t("รอตรวจสอบ")}</span>
             <Clock className="w-4 h-4" />
           </div>
           <div className="text-2xl font-black text-slate-900 dark:text-white">{submittedCount}</div>
@@ -84,7 +91,7 @@ export const InstructorDashboard: React.FC = () => {
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-teal-600 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">ตัดข้อสอบแล้ว</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t("ตัดข้อสอบแล้ว")}</span>
             <CheckCircle2 className="w-4 h-4" />
           </div>
           <div className="text-2xl font-black text-slate-900 dark:text-white">{approvedCount}</div>
@@ -92,7 +99,7 @@ export const InstructorDashboard: React.FC = () => {
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-amber-600 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">กำลังพิมพ์</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t("กำลังพิมพ์")}</span>
             <Printer className="w-4 h-4" />
           </div>
           <div className="text-2xl font-black text-slate-900 dark:text-white">{printingCount}</div>
@@ -100,7 +107,7 @@ export const InstructorDashboard: React.FC = () => {
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-purple-600 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">บรรจุซอง</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t("บรรจุซอง")}</span>
             <PackageCheck className="w-4 h-4" />
           </div>
           <div className="text-2xl font-black text-slate-900 dark:text-white">{packedCount}</div>
@@ -108,7 +115,7 @@ export const InstructorDashboard: React.FC = () => {
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-emerald-600 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">ส่งมอบแล้ว</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t("ส่งมอบแล้ว")}</span>
             <Truck className="w-4 h-4" />
           </div>
           <div className="text-2xl font-black text-slate-900 dark:text-white">{deliveredCount}</div>
@@ -116,7 +123,7 @@ export const InstructorDashboard: React.FC = () => {
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="flex items-center justify-between text-rose-600 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">ต้องแก้ไข</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t("ต้องแก้ไข")}</span>
             <AlertCircle className="w-4 h-4" />
           </div>
           <div className="text-2xl font-black text-rose-600">{rejectedCount}</div>
@@ -129,7 +136,7 @@ export const InstructorDashboard: React.FC = () => {
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="ค้นหารหัสวิชา หรือชื่อวิชา..."
+            placeholder={t("ค้นหารหัสวิชา หรือชื่อวิชา...")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-500"
@@ -142,13 +149,13 @@ export const InstructorDashboard: React.FC = () => {
             onChange={(e) => setStatusFilter(e.target.value)}
             className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 font-medium"
           >
-            <option value="">ทุกสถานะ (All Statuses)</option>
-            <option value={ExamStatus.SUBMITTED}>ส่งแล้ว รอตรวจสอบ</option>
-            <option value={ExamStatus.REJECTED}>ไม่ผ่านตรวจสอบ</option>
-            <option value={ExamStatus.APPROVED}>อนุมัติ / ตัดข้อสอบแล้ว</option>
-            <option value={ExamStatus.PRINTING}>กำลังจัดพิมพ์</option>
-            <option value={ExamStatus.PACKED}>บรรจุซองเรียบร้อย</option>
-            <option value={ExamStatus.DELIVERED}>ส่งมอบแล้ว</option>
+            <option value="">{t("ทุกสถานะ (All Statuses)")}</option>
+            <option value={ExamStatus.SUBMITTED}>{t("ส่งแล้ว รอตรวจสอบ")}</option>
+            <option value={ExamStatus.REJECTED}>{t("ไม่ผ่านตรวจสอบ")}</option>
+            <option value={ExamStatus.APPROVED}>{t("อนุมัติ / ตัดข้อสอบแล้ว")}</option>
+            <option value={ExamStatus.PRINTING}>{t("กำลังจัดพิมพ์")}</option>
+            <option value={ExamStatus.PACKED}>{t("บรรจุซองเรียบร้อย")}</option>
+            <option value={ExamStatus.DELIVERED}>{t("ส่งมอบแล้ว")}</option>
           </select>
         </div>
       </div>
@@ -157,27 +164,29 @@ export const InstructorDashboard: React.FC = () => {
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
+            <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="py-3.5 px-4">รหัสวิชา & ชื่อรายวิชา</th>
-                <th className="py-3.5 px-4">วัน-เวลาสอบ & ห้องสอบ</th>
-                <th className="py-3.5 px-4">จำนวนพิมพ์</th>
-                <th className="py-3.5 px-4">ไฟล์ข้อสอบ</th>
-                <th className="py-3.5 px-4">สถานะ (Real-time)</th>
-                <th className="py-3.5 px-4 text-right">การจัดการ</th>
+                <th className="py-3.5 px-4">{t("รหัสวิชา & ชื่อรายวิชา")}</th>
+                <th className="py-3.5 px-4">{t("วัน-เวลาสอบ & ห้องสอบ")}</th>
+                <th className="py-3.5 px-4">{t("จำนวนพิมพ์")}</th>
+                <th className="py-3.5 px-4">{t("ไฟล์ข้อสอบ")}</th>
+                <th className="py-3.5 px-4">{t("สถานะ (Real-time)")}</th>
+                <th className="py-3.5 px-4 text-right">{t("การจัดการ")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {isLoading ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
-                    กำลังโหลดข้อมูลข้อสอบ...
+
+                    {t("กำลังโหลดข้อมูลข้อสอบ...")}
                   </td>
                 </tr>
               ) : exams.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
-                    ไม่พบรายการข้อสอบ
+
+                    {t("ไม่พบรายการข้อสอบ")}
                   </td>
                 </tr>
               ) : (
@@ -189,24 +198,25 @@ export const InstructorDashboard: React.FC = () => {
                       </div>
                       <div className="text-slate-500 dark:text-slate-400">{exam.course_name}</div>
                       <div className="text-[11px] text-slate-400 mt-0.5">
-                        ภาค {exam.semester}/{exam.academic_year}
+
+                        {t("ภาค")} {exam.semester}/{exam.academic_year}
                       </div>
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="font-medium text-slate-800 dark:text-slate-200">
-                        {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString('th-TH') : '-'}
+                        {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH') : '-'}
                       </div>
-                      <div className="text-[11px] text-slate-500">
-                        {exam.start_time && exam.end_time ? `${exam.start_time} - ${exam.end_time} น.` : ''}
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {exam.start_time && exam.end_time ? t("{{v0}} - {{v1}} น.", { v0: exam.start_time, v1: exam.end_time }) : ''}
                       </div>
                       <div className="text-[11px] font-semibold text-brand-600 dark:text-brand-400">
-                        {exam.room || 'ตามตารางสอบ'}
+                        {exam.room || t("ตามตารางสอบ")}
                       </div>
                     </td>
                     <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-200">
-                      {exam.num_copies > 0 ? `${exam.num_copies} ชุด` : 'ยังไม่ระบุ'}
+                      {exam.num_copies > 0 ? t("{{v0}} ชุด", { v0: exam.num_copies }) : t("ยังไม่ระบุ")}
                       <div className="text-[11px] font-normal text-slate-400">
-                        {exam.num_pages || 1} หน้า/ชุด ({exam.is_double_sided ? 'หน้า-หลัง' : 'หน้าเดียว'})
+                        {exam.num_pages || 1}  {t("หน้า/ชุด (")}{exam.is_double_sided ? t("หน้า-หลัง") : t("หน้าเดียว")})
                       </div>
                     </td>
                     <td className="py-3.5 px-4">
@@ -214,18 +224,19 @@ export const InstructorDashboard: React.FC = () => {
                         <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
                           <FileText className="w-4 h-4 text-brand-500 shrink-0" />
                           <span className="truncate max-w-[140px]" title={exam.original_filename}>
-                            {exam.original_filename || 'ไฟล์ข้อสอบ'}
+                            {exam.original_filename || t("ไฟล์ข้อสอบ")}
                           </span>
                         </div>
                       ) : (
-                        <span className="text-slate-400 italic">ไม่มีไฟล์</span>
+                        <span className="text-slate-400 italic">{t("ไม่มีไฟล์")}</span>
                       )}
                     </td>
                     <td className="py-3.5 px-4">
                       <StatusBadge status={exam.status} />
                       {exam.status === ExamStatus.REJECTED && exam.rejection_reason && (
                         <div className="text-[11px] text-rose-600 mt-1 line-clamp-1" title={exam.rejection_reason}>
-                          เหตุผล: {exam.rejection_reason}
+
+                          {t("เหตุผล:")} {exam.rejection_reason}
                         </div>
                       )}
                     </td>
@@ -235,7 +246,8 @@ export const InstructorDashboard: React.FC = () => {
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-brand-50 hover:text-brand-600 font-semibold transition-colors"
                       >
                         <Eye className="w-3.5 h-3.5" />
-                        รายละเอียด
+
+                        {t("รายละเอียด")}
                       </Link>
                     </td>
                   </tr>

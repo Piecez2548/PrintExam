@@ -16,8 +16,13 @@ import {
   FileText,
   Layers,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { localizedApiError } from '../../api/localizedError';
+import i18n from '../../i18n';
 
 export const ExamPrintPage: React.FC = () => {
+  const { t } = useTranslation("avStaff");
+
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const toast = useToast();
@@ -42,7 +47,7 @@ export const ExamPrintPage: React.FC = () => {
       setExam(data);
       setPrintedCopies(data.num_copies > 0 ? data.num_copies : 1);
     } catch (err: any) {
-      toast.error('ไม่สามารถโหลดข้อมูลได้', err.response?.data?.message);
+      toast.error(t("ไม่สามารถโหลดข้อมูลได้"), localizedApiError(err, t('An unexpected error occurred.')));
     } finally {
       setIsLoading(false);
     }
@@ -56,7 +61,7 @@ export const ExamPrintPage: React.FC = () => {
   const handleRecordPrint = async (markCompleted: boolean) => {
     if (!id) return;
     if (!printedCopies || printedCopies < 1) {
-      toast.warning('กรุณาระบุจำนวนชุดที่พิมพ์');
+      toast.warning(t("กรุณาระบุจำนวนชุดที่พิมพ์"));
       return;
     }
 
@@ -70,8 +75,8 @@ export const ExamPrintPage: React.FC = () => {
       });
 
       toast.success(
-        markCompleted ? 'บันทึกการพิมพ์เสร็จสมบูรณ์' : 'เริ่มกระบวนการจัดพิมพ์',
-        `บันทึกจำนวน ${printedCopies} ชุดเรียบร้อย`
+        markCompleted ? t('บันทึกการพิมพ์เสร็จสมบูรณ์') : t('เริ่มกระบวนการจัดพิมพ์'),
+        t("บันทึกจำนวน {{v0}} ชุดเรียบร้อย", { v0: printedCopies })
       );
 
       if (markCompleted) {
@@ -80,14 +85,14 @@ export const ExamPrintPage: React.FC = () => {
         fetchExam();
       }
     } catch (err: any) {
-      toast.error('บันทึกการพิมพ์ไม่สำเร็จ', err.response?.data?.message);
+      toast.error(t("บันทึกการพิมพ์ไม่สำเร็จ"), localizedApiError(err, t('An unexpected error occurred.')));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (isLoading) return <div className="py-12 text-center text-slate-400">กำลังโหลดข้อมูล...</div>;
-  if (!exam) return <div className="py-12 text-center text-slate-500">ไม่พบข้อสอบ</div>;
+  if (isLoading) return <div className="py-12 text-center text-slate-400">{t("กำลังโหลดข้อมูล...")}</div>;
+  if (!exam) return <div className="py-12 text-center text-slate-500 dark:text-slate-400">{t("ไม่พบข้อสอบ")}</div>;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -96,19 +101,21 @@ export const ExamPrintPage: React.FC = () => {
         <div className="flex items-center gap-3">
           <Link
             to="/av-staff/queue"
-            className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 hover:text-slate-900 transition-colors"
+            className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-                บันทึกการพิมพ์ข้อสอบ & ใบปะหน้า
+
+                {t("บันทึกการพิมพ์ข้อสอบ & ใบปะหน้า")}
               </h1>
               <StatusBadge status={exam.status} />
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              วิชา {exam.course_code} - {exam.course_name} | ห้องสอบ: {exam.room || 'ตามตาราง'}
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+
+              {t("วิชา")} {exam.course_code} - {exam.course_name}  {t("| ห้องสอบ:")} {exam.room || t("ตามตาราง")}
             </p>
           </div>
         </div>
@@ -119,7 +126,8 @@ export const ExamPrintPage: React.FC = () => {
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-500/20 transition-all"
         >
           <FileCheck className="w-4 h-4" />
-          พิมพ์ใบปะหน้าซอง
+
+          {t("พิมพ์ใบปะหน้าซอง")}
         </button>
       </div>
 
@@ -128,35 +136,36 @@ export const ExamPrintPage: React.FC = () => {
         {/* Source File & Specs */}
         <div className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
           <div>
-            <span className="text-slate-400">ไฟล์ต้นฉบับ:</span>
+            <span className="text-slate-400">{t("ไฟล์ต้นฉบับ:")}</span>
             <div className="font-bold text-slate-800 dark:text-slate-200 truncate mt-0.5">
-              {exam.original_filename || 'ไฟล์ข้อสอบ'}
+              {exam.original_filename || t("ไฟล์ข้อสอบ")}
             </div>
             {exam.file_url && (
               <button
                 type="button"
                 onClick={() =>
                   void downloadAuthenticatedResource(exam.file_url!, exam.original_filename || `exam-${exam.id}`)
-                    .catch(() => toast.error('ดาวน์โหลดไม่สำเร็จ', 'ไม่สามารถดาวน์โหลดไฟล์ข้อสอบได้'))
+                    .catch(() => toast.error(t("ดาวน์โหลดไม่สำเร็จ"), t("ไม่สามารถดาวน์โหลดไฟล์ข้อสอบได้")))
                 }
                 className="text-brand-600 font-semibold hover:underline inline-flex items-center gap-1 mt-1"
               >
                 <Download className="w-3 h-3" />
-                ดาวน์โหลดไฟล์ส่งเข้าเครื่องพิมพ์
+
+                {t("ดาวน์โหลดไฟล์ส่งเข้าเครื่องพิมพ์")}
               </button>
             )}
           </div>
           <div>
-            <span className="text-slate-400">จำนวนที่ขอพิมพ์:</span>
+            <span className="text-slate-400">{t("จำนวนที่ขอพิมพ์:")}</span>
             <div className="text-base font-black text-emerald-600 mt-0.5">
-              {exam.num_copies > 0 ? `${exam.num_copies} ชุด` : 'ยังไม่ระบุ'}
+              {exam.num_copies > 0 ? t("{{v0}} ชุด", { v0: exam.num_copies }) : t("ยังไม่ระบุ")}
             </div>
-            <div className="text-[11px] text-slate-500">{exam.num_pages || 1} หน้า/ชุด ({exam.is_double_sided ? 'หน้า-หลัง' : 'หน้าเดียว'})</div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400">{exam.num_pages || 1}  {t("หน้า/ชุด (")}{exam.is_double_sided ? t("หน้า-หลัง") : t("หน้าเดียว")})</div>
           </div>
           <div>
-            <span className="text-slate-400">คำสั่งพิเศษ:</span>
+            <span className="text-slate-400">{t("คำสั่งพิเศษ:")}</span>
             <div className="font-medium text-slate-700 dark:text-slate-300 italic mt-0.5">
-              {exam.special_instructions || 'ไม่มี'}
+              {exam.special_instructions || t("ไม่มี")}
             </div>
           </div>
         </div>
@@ -165,13 +174,14 @@ export const ExamPrintPage: React.FC = () => {
         <div className="space-y-4 text-xs">
           <h3 className="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
             <Printer className="w-4 h-4 text-teal-600" />
-            <span>ระบุข้อมูลการพิมพ์จริง</span>
+            <span>{t("ระบุข้อมูลการพิมพ์จริง")}</span>
           </h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                จำนวนชุดที่พิมพ์จริง (Printed Copies) *
+
+                {t("จำนวนชุดที่พิมพ์จริง (Printed Copies) *")}
               </label>
               <input
                 type="number"
@@ -185,7 +195,8 @@ export const ExamPrintPage: React.FC = () => {
 
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                ชนิดกระดาษและหมึกพิมพ์
+
+                {t("ชนิดกระดาษและหมึกพิมพ์")}
               </label>
               <input
                 type="text"
@@ -198,11 +209,12 @@ export const ExamPrintPage: React.FC = () => {
 
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-              บันทึกการพิมพ์ / หมายเหตุ
+
+              {t("บันทึกการพิมพ์ / หมายเหตุ")}
             </label>
             <input
               type="text"
-              placeholder="เช่น พิมพ์ด้วยเครื่อง Ricoh Pro #2, พิมพ์สมบูรณ์ครบถ้วน..."
+              placeholder={t("เช่น พิมพ์ด้วยเครื่อง Ricoh Pro #2, พิมพ์สมบูรณ์ครบถ้วน...")}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2"
@@ -213,18 +225,20 @@ export const ExamPrintPage: React.FC = () => {
         {/* Existing Print Records History */}
         {exam.print_records && exam.print_records.length > 0 && (
           <div className="border-t border-slate-100 dark:border-slate-800 pt-4">
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-              ประวัติการบันทึกการพิมพ์ก่อนหน้า
+            <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+
+              {t("ประวัติการบันทึกการพิมพ์ก่อนหน้า")}
             </h4>
             <div className="space-y-2">
               {exam.print_records.map((pr, i) => (
                 <div key={i} className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl text-xs flex items-center justify-between">
                   <div>
-                    <span className="font-bold text-teal-600">{pr.printed_copies} ชุด</span> ({pr.paper_type})
-                    {pr.notes && <span className="text-slate-500 ml-2 italic">"{pr.notes}"</span>}
+                    <span className="font-bold text-teal-600">{pr.printed_copies}  {t("ชุด")}</span> ({pr.paper_type})
+                    {pr.notes && <span className="text-slate-500 dark:text-slate-400 ml-2 italic">"{pr.notes}"</span>}
                   </div>
                   <div className="text-slate-400 text-[11px]">
-                    โดย: {pr.printer_name} | {new Date(pr.printed_at).toLocaleString('th-TH')}
+
+                    {t("โดย:")} {pr.printer_name} | {new Date(pr.printed_at).toLocaleString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH')}
                   </div>
                 </div>
               ))}
@@ -240,7 +254,8 @@ export const ExamPrintPage: React.FC = () => {
             className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-50 flex items-center justify-center gap-2"
           >
             <FileText className="w-4 h-4" />
-            เปิดดู/พิมพ์ใบปะหน้าซอง
+
+            {t("เปิดดู/พิมพ์ใบปะหน้าซอง")}
           </button>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -250,7 +265,8 @@ export const ExamPrintPage: React.FC = () => {
               onClick={() => handleRecordPrint(false)}
               className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold transition-colors"
             >
-              กำลังจัดพิมพ์ (In Progress)
+
+              {t("กำลังจัดพิมพ์ (In Progress)")}
             </button>
             <button
               type="button"
@@ -259,7 +275,7 @@ export const ExamPrintPage: React.FC = () => {
               className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-500/25 transition-all flex items-center justify-center gap-2"
             >
               <CheckCircle2 className="w-4 h-4" />
-              {isSubmitting ? 'กำลังบันทึก...' : 'พิมพ์เสร็จสมบูรณ์ (Mark as Printed)'}
+              {isSubmitting ? t("กำลังบันทึก...") : t("พิมพ์เสร็จสมบูรณ์ (Mark as Printed)")}
             </button>
           </div>
         </div>

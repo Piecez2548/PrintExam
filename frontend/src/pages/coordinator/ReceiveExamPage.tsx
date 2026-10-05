@@ -18,8 +18,13 @@ import {
   UserCheck,
   PenTool,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
+import { localizedApiError } from '../../api/localizedError';
 
 export const ReceiveExamPage: React.FC = () => {
+  const { t } = useTranslation("coordinator");
+
   const toast = useToast();
   const { user, isCoordinator } = useAuth();
   const { lastEvent } = useWebSocket();
@@ -73,7 +78,7 @@ export const ReceiveExamPage: React.FC = () => {
     e.preventDefault();
     if (!selectedExam) return;
     if (!chkItems || !chkSealed || !chkProctorRole) {
-      toast.warning('กรุณายืนยันการตรวจสอบและความรับผิดชอบของกรรมการคุมสอบให้ครบถ้วน');
+      toast.warning(t("กรุณายืนยันการตรวจสอบและความรับผิดชอบของกรรมการคุมสอบให้ครบถ้วน"));
       return;
     }
 
@@ -84,13 +89,13 @@ export const ReceiveExamPage: React.FC = () => {
       });
 
       toast.success(
-        'บันทึกรับมอบข้อสอบเรียบร้อยแล้ว',
-        `กรรมการคุมสอบ (${user?.full_name}) ได้ลงนามรับมอบข้อสอบวิชา ${selectedExam.course_code} เข้าห้องสอบเรียบร้อย`
+        t("บันทึกรับมอบข้อสอบเรียบร้อยแล้ว"),
+        t("กรรมการคุมสอบ ({{v0}}) ได้ลงนามรับมอบข้อสอบวิชา {{v1}} เข้าห้องสอบเรียบร้อย", { v0: user?.full_name, v1: selectedExam.course_code })
       );
       setIsReceiveModalOpen(false);
       fetchExams();
     } catch (err: any) {
-      toast.error('ไม่สามารถบันทึกได้', err.response?.data?.message);
+      toast.error(t("ไม่สามารถบันทึกได้"), localizedApiError(err, t('An unexpected error occurred.')));
     } finally {
       setIsSubmitting(false);
     }
@@ -103,16 +108,17 @@ export const ReceiveExamPage: React.FC = () => {
         <div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
             <PackageCheck className="w-6 h-6 text-emerald-600" />
-            <span>รับมอบข้อสอบและนำส่งห้องสอบ</span>
+            <span>{t("รับมอบข้อสอบและนำส่งห้องสอบ")}</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            สำหรับกรรมการคุมสอบ/เจ้าหน้าที่ดำเนินการสอบ เพื่อตรวจรับซองข้อสอบ บันทึกลงนามรับมอบ และนำส่งเข้าห้องสอบ (REQ-0012)
+
+            {t("สำหรับกรรมการคุมสอบ/เจ้าหน้าที่ดำเนินการสอบ เพื่อตรวจรับซองข้อสอบ บันทึกลงนามรับมอบ และนำส่งเข้าห้องสอบ (REQ-0012)")}
           </p>
         </div>
 
         <div className="flex items-center gap-2 px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-semibold">
           <UserCheck className="w-4 h-4 text-emerald-600" />
-          <span>ผู้ลงนามรับมอบ: {user?.full_name} (กรรมการคุมสอบ)</span>
+          <span>{t("ผู้ลงนามรับมอบ:")} {user?.full_name}  {t("(กรรมการคุมสอบ)")}</span>
         </div>
       </div>
 
@@ -121,34 +127,36 @@ export const ReceiveExamPage: React.FC = () => {
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
             <Clock className="w-4 h-4 text-sky-500" />
-            <span>รายการข้อสอบพร้อมรับมอบ ({pickupQueue.length} รายการ)</span>
+            <span>{t("รายการข้อสอบพร้อมรับมอบ (")}{pickupQueue.length}  {t("รายการ)")}</span>
           </h2>
         </div>
 
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
+              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
                 <tr>
-                  <th className="py-3.5 px-4">รหัสวิชา & ชื่อรายวิชา</th>
-                  <th className="py-3.5 px-4">วันสอบ & เวลาสอบ</th>
-                  <th className="py-3.5 px-4">ห้องสอบ (Exam Room)</th>
-                  <th className="py-3.5 px-4">จำนวนชุด</th>
-                  <th className="py-3.5 px-4">สถานะ</th>
-                  <th className="py-3.5 px-4 text-right">ดำเนินการรับมอบ</th>
+                  <th className="py-3.5 px-4">{t("รหัสวิชา & ชื่อรายวิชา")}</th>
+                  <th className="py-3.5 px-4">{t("วันสอบ & เวลาสอบ")}</th>
+                  <th className="py-3.5 px-4">{t("ห้องสอบ (Exam Room)")}</th>
+                  <th className="py-3.5 px-4">{t("จำนวนชุด")}</th>
+                  <th className="py-3.5 px-4">{t("สถานะ")}</th>
+                  <th className="py-3.5 px-4 text-right">{t("ดำเนินการรับมอบ")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {isLoading ? (
                   <tr>
                     <td colSpan={6} className="py-12 text-center text-slate-400">
-                      กำลังโหลดข้อมูล...
+
+                      {t("กำลังโหลดข้อมูล...")}
                     </td>
                   </tr>
                 ) : pickupQueue.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-12 text-center text-slate-400">
-                      ยังไม่มีซองข้อสอบที่พร้อมรับมอบขณะนี้
+
+                      {t("ยังไม่มีซองข้อสอบที่พร้อมรับมอบขณะนี้")}
                     </td>
                   </tr>
                 ) : (
@@ -158,22 +166,22 @@ export const ReceiveExamPage: React.FC = () => {
                         <div className="font-bold text-slate-900 dark:text-slate-100 text-sm">
                           {exam.course_code}
                         </div>
-                        <div className="text-slate-500">{exam.course_name}</div>
-                        <div className="text-[11px] text-slate-400">ผู้สอน: {exam.instructor_name}</div>
+                        <div className="text-slate-500 dark:text-slate-400">{exam.course_name}</div>
+                        <div className="text-[11px] text-slate-400">{t("ผู้สอน:")} {exam.instructor_name}</div>
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="font-medium text-slate-800 dark:text-slate-200">
-                          {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString('th-TH') : '-'}
+                          {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH') : '-'}
                         </div>
-                        <div className="text-[11px] text-slate-500">
-                          {exam.start_time && exam.end_time ? `${exam.start_time}-${exam.end_time} น.` : ''}
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {exam.start_time && exam.end_time ? t("{{v0}}-{{v1}} น.", { v0: exam.start_time, v1: exam.end_time }) : ''}
                         </div>
                       </td>
                       <td className="py-3.5 px-4 font-bold text-rose-600">
-                        {exam.room || 'ตามตาราง'}
+                        {exam.room || t("ตามตาราง")}
                       </td>
                       <td className="py-3.5 px-4 font-extrabold text-slate-800 dark:text-slate-200">
-                        {exam.printed_copies ?? exam.num_copies} ชุด
+                        {exam.printed_copies ?? exam.num_copies}  {t("ชุด")}
                       </td>
                       <td className="py-3.5 px-4">
                         <StatusBadge status={exam.status} />
@@ -181,9 +189,10 @@ export const ReceiveExamPage: React.FC = () => {
                       <td className="py-3.5 px-4 text-right space-x-2">
                         <button
                           onClick={() => setEnvelopeExam(exam)}
-                          className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium"
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 dark:text-slate-300 hover:bg-slate-200 font-medium"
                         >
-                          ใบปะหน้า
+
+                          {t("ใบปะหน้า")}
                         </button>
                         {isCoordinator ? (
                           <button
@@ -191,11 +200,13 @@ export const ReceiveExamPage: React.FC = () => {
                             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-xs"
                           >
                             <PenTool className="w-3.5 h-3.5" />
-                            ลงนามรับมอบข้อสอบ
+
+                            {t("ลงนามรับมอบข้อสอบ")}
                           </button>
                         ) : (
                           <span className="text-[11px] text-slate-400 italic">
-                            (เฉพาะเจ้าหน้าที่สอบที่ลงนามได้)
+
+                            {t("(เฉพาะเจ้าหน้าที่สอบที่ลงนามได้)")}
                           </span>
                         )}
                       </td>
@@ -212,20 +223,20 @@ export const ReceiveExamPage: React.FC = () => {
       <div className="space-y-3 pt-4">
         <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
           <Truck className="w-4 h-4 text-emerald-600" />
-          <span>ประวัติข้อสอบที่รับมอบแล้ว ({deliveredList.length} รายการ)</span>
+          <span>{t("ประวัติข้อสอบที่รับมอบแล้ว (")}{deliveredList.length}  {t("รายการ)")}</span>
         </h2>
 
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
+              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
                 <tr>
-                  <th className="py-3.5 px-4">รหัสวิชา & รายวิชา</th>
-                  <th className="py-3.5 px-4">วัน-เวลาสอบ</th>
-                  <th className="py-3.5 px-4">ห้องสอบ</th>
-                  <th className="py-3.5 px-4">จำนวนพิมพ์</th>
-                  <th className="py-3.5 px-4">สถานะ</th>
-                  <th className="py-3.5 px-4 text-right">เอกสาร</th>
+                  <th className="py-3.5 px-4">{t("รหัสวิชา & รายวิชา")}</th>
+                  <th className="py-3.5 px-4">{t("วัน-เวลาสอบ")}</th>
+                  <th className="py-3.5 px-4">{t("ห้องสอบ")}</th>
+                  <th className="py-3.5 px-4">{t("จำนวนพิมพ์")}</th>
+                  <th className="py-3.5 px-4">{t("สถานะ")}</th>
+                  <th className="py-3.5 px-4 text-right">{t("เอกสาร")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -234,20 +245,21 @@ export const ReceiveExamPage: React.FC = () => {
                     <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-slate-100">
                       {exam.course_code} - {exam.course_name}
                     </td>
-                    <td className="py-3.5 px-4 text-slate-600">
-                      {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString('th-TH') : '-'}
+                    <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
+                      {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH') : '-'}
                     </td>
                     <td className="py-3.5 px-4 font-semibold text-rose-600">{exam.room}</td>
-                    <td className="py-3.5 px-4 font-bold">{exam.printed_copies ?? exam.num_copies} ชุด</td>
+                    <td className="py-3.5 px-4 font-bold">{exam.printed_copies ?? exam.num_copies}  {t("ชุด")}</td>
                     <td className="py-3.5 px-4">
                       <StatusBadge status={exam.status} />
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <button
                         onClick={() => setEnvelopeExam(exam)}
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium"
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 dark:text-slate-300 hover:bg-slate-200 font-medium"
                       >
-                        ใบปะหน้าซอง
+
+                        {t("ใบปะหน้าซอง")}
                       </button>
                     </td>
                   </tr>
@@ -262,20 +274,23 @@ export const ReceiveExamPage: React.FC = () => {
       <Modal
         isOpen={isReceiveModalOpen}
         onClose={() => setIsReceiveModalOpen(false)}
-        title="ลงนามและยืนยันการรับมอบซองข้อสอบ (กรรมการคุมสอบ)"
+        title={t("ลงนามและยืนยันการรับมอบซองข้อสอบ (กรรมการคุมสอบ)")}
         maxWidth="lg"
       >
         {selectedExam && (
           <form onSubmit={handleConfirmDelivery} className="space-y-4 text-xs">
             <div className="bg-emerald-50 dark:bg-emerald-950/40 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200">
               <div className="font-bold text-sm">
-                วิชา {selectedExam.course_code} - {selectedExam.course_name}
+
+                {t("วิชา")} {selectedExam.course_code} - {selectedExam.course_name}
               </div>
               <div className="mt-1 text-xs text-emerald-800 dark:text-emerald-300">
-                สำหรับห้องสอบ: <strong>{selectedExam.room || 'ตามตาราง'}</strong> | จำนวน <strong>{selectedExam.printed_copies ?? selectedExam.num_copies} ชุด</strong>
+
+                {t("สำหรับห้องสอบ:")} <strong>{selectedExam.room || t("ตามตาราง")}</strong>  {t("| จำนวน")} <strong>{selectedExam.printed_copies ?? selectedExam.num_copies}  {t("ชุด")}</strong>
               </div>
               <div className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-400">
-                วัน-เวลาสอบ: {selectedExam.exam_date ? new Date(selectedExam.exam_date).toLocaleDateString('th-TH') : '-'} {selectedExam.start_time}-{selectedExam.end_time} น.
+
+                {t("วัน-เวลาสอบ:")} {selectedExam.exam_date ? new Date(selectedExam.exam_date).toLocaleDateString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH') : '-'} {selectedExam.start_time}-{selectedExam.end_time}  {t("น.")}
               </div>
             </div>
 
@@ -283,9 +298,10 @@ export const ReceiveExamPage: React.FC = () => {
             <div className="bg-blue-50 dark:bg-blue-950/40 p-3.5 rounded-2xl border border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200 flex items-center gap-3">
               <UserCheck className="w-5 h-5 text-blue-600 shrink-0" />
               <div>
-                <div className="font-bold text-xs">ผู้ลงนามรับมอบข้อสอบ (กรรมการคุมสอบ/ฝ่ายดำเนินการสอบ)</div>
+                <div className="font-bold text-xs">{t("ผู้ลงนามรับมอบข้อสอบ (กรรมการคุมสอบ/ฝ่ายดำเนินการสอบ)")}</div>
                 <div className="text-xs text-blue-700 dark:text-blue-300 font-medium mt-0.5">
-                  ชื่อ-สกุล: <strong>{user?.full_name}</strong> | อีเมล: {user?.email}
+
+                  {t("ชื่อ-สกุล:")} <strong>{user?.full_name}</strong>  {t("| อีเมล:")} {user?.email}
                 </div>
               </div>
             </div>
@@ -293,7 +309,7 @@ export const ReceiveExamPage: React.FC = () => {
             <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
               <h4 className="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>การตรวจสอบขณะรับมอบ</span>
+                <span>{t("การตรวจสอบขณะรับมอบ")}</span>
               </h4>
 
               <label className="flex items-start gap-2.5 cursor-pointer">
@@ -304,7 +320,8 @@ export const ReceiveExamPage: React.FC = () => {
                   className="w-4 h-4 text-emerald-600 rounded mt-0.5"
                 />
                 <span className="font-medium text-slate-700 dark:text-slate-300">
-                  1. ตรวจสอบรหัสวิชา, ชื่อวิชา, ห้องสอบ และจำนวนชุด ({selectedExam.printed_copies ?? selectedExam.num_copies} ชุด) ถูกต้องตรงตามใบปะหน้าซอง
+
+                  {t("1. ตรวจสอบรหัสวิชา, ชื่อวิชา, ห้องสอบ และจำนวนชุด (")}{selectedExam.printed_copies ?? selectedExam.num_copies}  {t("ชุด) ถูกต้องตรงตามใบปะหน้าซอง")}
                 </span>
               </label>
 
@@ -316,7 +333,8 @@ export const ReceiveExamPage: React.FC = () => {
                   className="w-4 h-4 text-emerald-600 rounded mt-0.5"
                 />
                 <span className="font-medium text-slate-700 dark:text-slate-300">
-                  2. สติกเกอร์ซีลซองและแถบปิดผนึกอยู่ในสภาพสมบูรณ์ ไม่มีการเปิด ฉีกขาด หรือถูกแกะก่อนเวลา
+
+                  {t("2. สติกเกอร์ซีลซองและแถบปิดผนึกอยู่ในสภาพสมบูรณ์ ไม่มีการเปิด ฉีกขาด หรือถูกแกะก่อนเวลา")}
                 </span>
               </label>
 
@@ -328,14 +346,16 @@ export const ReceiveExamPage: React.FC = () => {
                   className="w-4 h-4 text-emerald-600 rounded mt-0.5"
                 />
                 <span className="font-medium text-slate-700 dark:text-slate-300">
-                  3. ข้าพเจ้ารับมอบซองข้อสอบในฐานะกรรมการคุมสอบ และจะนำส่งเข้าห้องสอบตามเวลาที่กำหนด
+
+                  {t("3. ข้าพเจ้ารับมอบซองข้อสอบในฐานะกรรมการคุมสอบ และจะนำส่งเข้าห้องสอบตามเวลาที่กำหนด")}
                 </span>
               </label>
             </div>
 
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                หมายเหตุการรับมอบ / ข้อความบันทึกลงนาม
+
+                {t("หมายเหตุการรับมอบ / ข้อความบันทึกลงนาม")}
               </label>
               <input
                 type="text"
@@ -349,9 +369,10 @@ export const ReceiveExamPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsReceiveModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-semibold"
+                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 dark:text-slate-300 font-semibold"
               >
-                ยกเลิก
+
+                {t("ยกเลิก")}
               </button>
               <button
                 type="submit"
@@ -359,7 +380,7 @@ export const ReceiveExamPage: React.FC = () => {
                 className="inline-flex items-center gap-1.5 px-6 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50"
               >
                 <PenTool className="w-4 h-4" />
-                {isSubmitting ? 'กำลังบันทึก...' : 'ลงนามและยืนยันรับมอบเข้าห้องสอบ'}
+                {isSubmitting ? t("กำลังบันทึก...") : t("ลงนามและยืนยันรับมอบเข้าห้องสอบ")}
               </button>
             </div>
           </form>

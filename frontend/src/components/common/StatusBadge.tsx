@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExamStatus, STATUS_LABELS_TH } from '../../types';
+import { ExamStatus } from '../../types';
 import {
   FileEdit,
   Clock,
@@ -10,6 +10,7 @@ import {
   Truck,
   Send,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface StatusBadgeProps {
   status: ExamStatus | string;
@@ -22,6 +23,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   size = 'md',
   showIcon = true,
 }) => {
+  const { t } = useTranslation('common');
   const getBadgeConfig = () => {
     switch (status) {
       case ExamStatus.DRAFT:
@@ -30,7 +32,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
           text: 'text-slate-700 dark:text-slate-300',
           border: 'border-slate-300 dark:border-slate-700',
           icon: <FileEdit className="w-3.5 h-3.5" />,
-          label: STATUS_LABELS_TH[ExamStatus.DRAFT],
+          label: t(`status.${ExamStatus.DRAFT}`, { ns: 'statuses' }),
         };
       case ExamStatus.SUBMITTED:
         return {
@@ -38,7 +40,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
           text: 'text-blue-700 dark:text-blue-300',
           border: 'border-blue-200 dark:border-blue-800',
           icon: <Clock className="w-3.5 h-3.5 animate-pulse" />,
-          label: STATUS_LABELS_TH[ExamStatus.SUBMITTED],
+          label: t(`status.${ExamStatus.SUBMITTED}`, { ns: 'statuses' }),
         };
       case ExamStatus.REJECTED:
         return {
@@ -46,7 +48,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
           text: 'text-rose-700 dark:text-rose-300',
           border: 'border-rose-200 dark:border-rose-800',
           icon: <AlertCircle className="w-3.5 h-3.5" />,
-          label: STATUS_LABELS_TH[ExamStatus.REJECTED],
+          label: t(`status.${ExamStatus.REJECTED}`, { ns: 'statuses' }),
         };
       case ExamStatus.APPROVED:
         return {
@@ -54,7 +56,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
           text: 'text-teal-700 dark:text-teal-300',
           border: 'border-teal-200 dark:border-teal-800',
           icon: <CheckCircle className="w-3.5 h-3.5" />,
-          label: STATUS_LABELS_TH[ExamStatus.APPROVED],
+          label: t(`status.${ExamStatus.APPROVED}`, { ns: 'statuses' }),
         };
       case ExamStatus.PRINTING:
         return {
@@ -62,7 +64,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
           text: 'text-amber-700 dark:text-amber-300',
           border: 'border-amber-200 dark:border-amber-800',
           icon: <Printer className="w-3.5 h-3.5 animate-spin" />,
-          label: STATUS_LABELS_TH[ExamStatus.PRINTING],
+          label: t(`status.${ExamStatus.PRINTING}`, { ns: 'statuses' }),
         };
       case ExamStatus.PRINTED:
         return {
@@ -70,7 +72,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
           text: 'text-indigo-700 dark:text-indigo-300',
           border: 'border-indigo-200 dark:border-indigo-800',
           icon: <Printer className="w-3.5 h-3.5" />,
-          label: STATUS_LABELS_TH[ExamStatus.PRINTED],
+          label: t(`status.${ExamStatus.PRINTED}`, { ns: 'statuses' }),
         };
       case ExamStatus.PACKED:
         return {
@@ -78,7 +80,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
           text: 'text-purple-700 dark:text-purple-300',
           border: 'border-purple-200 dark:border-purple-800',
           icon: <PackageCheck className="w-3.5 h-3.5" />,
-          label: STATUS_LABELS_TH[ExamStatus.PACKED],
+          label: t(`status.${ExamStatus.PACKED}`, { ns: 'statuses' }),
         };
       case ExamStatus.READY_FOR_PICKUP:
         return {
@@ -86,7 +88,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
           text: 'text-sky-700 dark:text-sky-300',
           border: 'border-sky-300 dark:border-sky-800',
           icon: <Send className="w-3.5 h-3.5" />,
-          label: STATUS_LABELS_TH[ExamStatus.READY_FOR_PICKUP],
+          label: t(`status.${ExamStatus.READY_FOR_PICKUP}`, { ns: 'statuses' }),
         };
       case ExamStatus.DELIVERED:
         return {
@@ -94,19 +96,19 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
           text: 'text-emerald-700 dark:text-emerald-300',
           border: 'border-emerald-300 dark:border-emerald-800',
           icon: <Truck className="w-3.5 h-3.5" />,
-          label: STATUS_LABELS_TH[ExamStatus.DELIVERED],
+          label: t(`status.${ExamStatus.DELIVERED}`, { ns: 'statuses' }),
         };
       case ExamStatus.CANCELLED:
         return {
           bg: 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
           icon: null,
-          label: STATUS_LABELS_TH[ExamStatus.CANCELLED],
+          label: t(`status.${ExamStatus.CANCELLED}`, { ns: 'statuses' }),
         };
       default:
         return {
-          bg: 'bg-slate-100',
-          text: 'text-slate-700',
-          border: 'border-slate-300',
+          bg: 'bg-slate-100 dark:bg-slate-800',
+          text: 'text-slate-700 dark:text-slate-200',
+          border: 'border-slate-300 dark:border-slate-700',
           icon: null,
           label: status,
         };

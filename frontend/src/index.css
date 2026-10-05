@@ -2,9 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light;
+  --color-app-bg: 248 250 252;
+  --color-surface: 255 255 255;
+  --color-surface-secondary: 241 245 249;
+  --color-text-primary: 15 23 42;
+  --color-text-secondary: 71 85 105;
+  --color-text-muted: 100 116 139;
+  --color-border: 226 232 240;
+  --color-input-bg: 255 255 255;
+  --color-focus-ring: 12 141 228;
+}
+
+html.dark {
+  color-scheme: dark;
+  --color-app-bg: 2 6 23;
+  --color-surface: 15 23 42;
+  --color-surface-secondary: 30 41 59;
+  --color-text-primary: 241 245 249;
+  --color-text-secondary: 203 213 225;
+  --color-text-muted: 148 163 184;
+  --color-border: 51 65 85;
+  --color-input-bg: 15 23 42;
+  --color-focus-ring: 54 168 246;
+}
+
 @layer base {
   body {
-    @apply antialiased text-slate-800 bg-slate-50 selection:bg-brand-500 selection:text-white font-sans;
+    @apply antialiased selection:bg-brand-500 selection:text-white font-sans;
+    color: rgb(var(--color-text-primary));
+    background-color: rgb(var(--color-app-bg));
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
 }
@@ -20,12 +48,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: rgb(var(--color-border));
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: rgb(var(--color-text-muted));
 }
 
 /* Print Specific Rules for Official Envelope Label (REQ-0010) */
@@ -44,5 +72,13 @@
     border: 2px solid #000 !important;
     margin: 0 !important;
     padding: 15px !important;
+    background: #fff !important;
+    color: #000 !important;
+    color-scheme: light !important;
+  }
+  #printable-envelope,
+  #printable-envelope * {
+    background-color: transparent !important;
+    color: #000 !important;
   }
 }

@@ -8,6 +8,16 @@ export default {
   theme: {
     extend: {
       colors: {
+        surface: {
+          DEFAULT: 'rgb(var(--color-surface) / <alpha-value>)',
+          secondary: 'rgb(var(--color-surface-secondary) / <alpha-value>)',
+        },
+        foreground: {
+          DEFAULT: 'rgb(var(--color-text-primary) / <alpha-value>)',
+          secondary: 'rgb(var(--color-text-secondary) / <alpha-value>)',
+          muted: 'rgb(var(--color-text-muted) / <alpha-value>)',
+        },
+        outline: 'rgb(var(--color-border) / <alpha-value>)',
         brand: {
           50: '#f0f7ff',
           100: '#e0effe',
