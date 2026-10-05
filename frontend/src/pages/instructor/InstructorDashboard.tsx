@@ -171,7 +171,7 @@ export const InstructorDashboard: React.FC = () => {
                 <th className="py-3.5 px-4">{t("จำนวนพิมพ์")}</th>
                 <th className="py-3.5 px-4">{t("ไฟล์ข้อสอบ")}</th>
                 <th className="py-3.5 px-4">{t("สถานะ (Real-time)")}</th>
-                <th className="py-3.5 px-4 text-right">{t("การจัดการ")}</th>
+                <th className="w-px whitespace-nowrap py-3.5 px-4 text-center">{t("การจัดการ")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -240,10 +240,10 @@ export const InstructorDashboard: React.FC = () => {
                         </div>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 text-right">
+                    <td className="w-px whitespace-nowrap py-2 px-3 text-center">
                       <Link
                         to={`/instructor/exams/${exam.id}`}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-brand-50 hover:text-brand-600 font-semibold transition-colors"
+                        className="inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-lg bg-slate-100 px-2 text-xs font-semibold transition-colors hover:bg-brand-50 hover:text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:bg-slate-800 dark:focus-visible:ring-offset-slate-900"
                       >
                         <Eye className="w-3.5 h-3.5" />
 
