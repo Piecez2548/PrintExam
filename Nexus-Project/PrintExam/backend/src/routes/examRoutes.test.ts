@@ -50,3 +50,39 @@ test('historical paper_type values remain readable exactly as stored', async () 
     assert.equal(record.paper_type, paperType);
   }
 });
+
+test('exam response exposes the authoritative course department for cover sheets', async () => {
+  const { formatExam } = await import('./examRoutes');
+  const formatted = formatExam({
+    id: 52,
+    courseId: 11,
+    numCopies: 42,
+    studentCount: 40,
+    reserveCopies: 2,
+    course: {
+      courseCode: 'CS101',
+      courseName: 'Introduction to Computing',
+      department: 'Faculty of Science',
+      semester: 2,
+      academicYear: '2569',
+      instructorId: 6,
+      instructor: { fullName: 'Example Instructor', phone: '074000000', officeRoom: 'SCI-201' },
+    },
+    schedule: {
+      examDate: '2026-10-04',
+      startTime: '09:00',
+      endTime: '12:00',
+      room: 'CB-2301',
+      examType: 'FINAL',
+      section: '01',
+    },
+  });
+
+  assert.equal(formatted.department, 'Faculty of Science');
+  assert.equal(formatted.student_count, 40);
+  assert.equal(formatted.num_copies, 42);
+  assert.equal(formatted.reserve_copies, 2);
+  assert.equal(formatted.exam_date, '2026-10-04');
+  assert.equal(formatted.room, 'CB-2301');
+  assert.equal(formatted.section, '01');
+});

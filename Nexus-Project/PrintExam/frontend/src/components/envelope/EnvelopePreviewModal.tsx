@@ -7,6 +7,7 @@ import { downloadAuthenticatedResource } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
+import { resolveEnvelopeCoverSheet } from '../../utils/envelopeCoverSheet';
 
 interface EnvelopePreviewModalProps {
   isOpen: boolean;
@@ -26,9 +27,19 @@ export const EnvelopePreviewModal: React.FC<EnvelopePreviewModalProps> = ({
   const toast = useToast();
   if (!exam) return null;
 
-  const actualCopies = exam.printed_copies ?? exam.print_records?.[0]?.printed_copies ?? exam.num_copies;
+  const cover = resolveEnvelopeCoverSheet(exam, i18n.resolvedLanguage || 'th');
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    const printable = document.getElementById('printable-envelope');
+    if (!printable) return;
+
+    await document.fonts.ready;
+    await Promise.all(Array.from(printable.querySelectorAll('img')).map((image) =>
+      image.decode().catch(() => undefined)
+    ));
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()));
+    });
     window.print();
   };
 
@@ -39,22 +50,7 @@ export const EnvelopePreviewModal: React.FC<EnvelopePreviewModalProps> = ({
     );
   };
 
-  const trackingCode = `ENV-${exam.course_code}-${exam.id}-${exam.academic_year || '2569'}`;
-  const examDate = exam.exam_date ? new Date(exam.exam_date) : null;
-  const validExamDate = examDate && !Number.isNaN(examDate.getTime());
-  const examDay = validExamDate ? examDate.getDate() : '-';
-  const examMonth = validExamDate ? examDate.toLocaleDateString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH', { month: 'long' }) : '-';
-  const examYear = validExamDate
-    ? examDate.toLocaleDateString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH', { year: 'numeric' })
-    : exam.academic_year || '-';
   const lineClass = 'inline-block min-h-5 border-b border-dotted border-slate-700 px-2 font-semibold';
-  let selectedMaterials: string[] = [];
-  try {
-    const parsed = exam.allowed_materials ? JSON.parse(exam.allowed_materials) : [];
-    selectedMaterials = Array.isArray(parsed) ? parsed : [];
-  } catch {
-    selectedMaterials = [];
-  }
   const mark = (selected: boolean) => selected ? '( / )' : '(   )';
 
   return (
@@ -104,51 +100,51 @@ export const EnvelopePreviewModal: React.FC<EnvelopePreviewModalProps> = ({
         >
           <div className="mb-5 text-center">
             <img src="/images/psu-official-logo.png" alt={t("ตรามหาวิทยาลัยสงขลานครินทร์")} className="mx-auto h-20 w-auto object-contain" />
-            <div className="mt-1 text-lg font-extrabold">{t("คณะวิทยาศาสตร์")}</div>
+            <div className="mt-1 text-lg font-extrabold">{cover.department}</div>
             <div className="text-base font-bold">{t("มหาวิทยาลัยสงขลานครินทร์")}</div>
           </div>
 
           <div className="space-y-3">
-            <div className="grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_11rem]">
-              <span>{t("การสอบวิชา")}</span><span className={lineClass}>{exam.course_name}</span>
-              <span>{t("รหัสวิชา")}</span><span className={lineClass}>{exam.course_code}</span>
+            <div className="print-cover-grid-course grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_11rem]">
+              <span>{t("การสอบวิชา")}</span><span className={lineClass}>{cover.courseName}</span>
+              <span>{t("รหัสวิชา")}</span><span className={lineClass}>{cover.courseCode}</span>
             </div>
             <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
-              <span>{t("สอบวันที่")}</span><span className={`${lineClass} w-14 text-center`}>{examDay}</span>
-              <span>{t("เดือน")}</span><span className={`${lineClass} w-28 text-center`}>{examMonth}</span>
-              <span>{t("พ.ศ.")}</span><span className={`${lineClass} w-16 text-center`}>{examYear}</span>
-              <span>{t("เวลา")}</span><span className={`${lineClass} min-w-40 text-center`}>{exam.start_time && exam.end_time ? `${exam.start_time} - ${exam.end_time}` : '-'}  {t("น.")}</span>
+              <span>{t("สอบวันที่")}</span><span className={`${lineClass} w-14 text-center`}>{cover.examDay}</span>
+              <span>{t("เดือน")}</span><span className={`${lineClass} w-28 text-center`}>{cover.examMonth}</span>
+              <span>{t("พ.ศ.")}</span><span className={`${lineClass} w-16 text-center`}>{cover.examYear}</span>
+              <span>{t("เวลา")}</span><span className={`${lineClass} min-w-40 text-center`}>{cover.examTime === '-' ? '-' : `${cover.examTime} ${t("น.")}`}</span>
             </div>
-            <div className="grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_1fr]">
-              <span>{t("ห้องสอบ")}</span><span className={lineClass}>{exam.room || '-'}</span>
-              <span>{t("เลขประจำซอง")}</span><span className={lineClass}>{trackingCode}</span>
-            </div>
-            <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
-              <span>{t("จำนวนนักศึกษา")}</span><span className={`${lineClass} w-16 text-center`}>{exam.student_count ?? Math.max(actualCopies - (exam.reserve_copies ?? 2), 1)}</span><span>{t("คน")}</span>
+            <div className="print-cover-grid-details grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_1fr]">
+              <span>{t("ห้องสอบ")}</span><span className={lineClass}>{cover.examRoom}</span>
+              <span>{t("เลขประจำซอง")}</span><span className={lineClass}>{cover.envelopeIdentifier}</span>
             </div>
             <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
-              <span>{t("นศ.คณะ")}</span><span className={`${lineClass} min-w-52`}>{t("วิทยาศาสตร์")}</span>
-              <span>{t("ตอน")}</span><span className={`${lineClass} w-20 text-center`}>{exam.section || '-'}</span>
-              <span className="ml-4">{t("ซองนี้มีข้อสอบ")}</span><span className={`${lineClass} w-16 text-center`}>{actualCopies}</span><span>{t("ชุด")}</span>
+              <span>{t("จำนวนนักศึกษา")}</span><span className={`${lineClass} w-16 text-center`}>{cover.studentCount}</span><span>{t("คน")}</span>
+            </div>
+            <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
+              <span>{t("นศ.คณะ")}</span><span className={`${lineClass} min-w-52`}>{cover.department}</span>
+              <span>{t("ตอน")}</span><span className={`${lineClass} w-20 text-center`}>{cover.section}</span>
+              <span className="ml-4">{t("ซองนี้มีข้อสอบ")}</span><span className={`${lineClass} w-16 text-center`}>{cover.examCopyCount}</span><span>{t("ชุด")}</span>
             </div>
             <div className="flex items-end gap-2">
-              <span>{t("ข้อสอบสำรอง")}</span><span className={`${lineClass} w-14 text-center`}>{exam.reserve_copies ?? 2}</span><span>{t("ชุด")}</span>
+              <span>{t("ข้อสอบสำรอง")}</span><span className={`${lineClass} w-14 text-center`}>{cover.reserveCopyCount}</span><span>{t("ชุด")}</span>
             </div>
           </div>
 
           <div className="mt-6">
             <div className="text-center text-sm font-extrabold">{t("อุปกรณ์ที่ใช้หรือคำแนะนำผู้คุมสอบเพิ่มเติม")}</div>
-            <div className="mt-3 grid gap-x-8 gap-y-2 md:grid-cols-2">
-              <div>{mark(selectedMaterials.includes('BOOK'))}  {t("นำตำราเข้าห้องสอบได้")}</div><div>{mark(Boolean(exam.special_instructions))} {exam.special_instructions || t("อื่น ๆ โปรดระบุ")}</div>
-              <div>{mark(selectedMaterials.includes('CALCULATOR'))}  {t("นำเครื่องคิดเลขเข้าห้องสอบได้")}</div><div>( &nbsp; ) <span className="inline-block w-4/5 border-b border-dotted border-slate-600">&nbsp;</span></div>
-              <div>{mark(selectedMaterials.includes('NO_FORMULA_RULER'))}  {t("ห้ามนำไม้บรรทัดมีสูตรคณิตศาสตร์เข้าห้องสอบ")}</div><div>( &nbsp; ) <span className="inline-block w-4/5 border-b border-dotted border-slate-600">&nbsp;</span></div>
+            <div className="print-cover-grid-options mt-3 grid gap-x-8 gap-y-2 md:grid-cols-2">
+              <div>{mark(cover.permittedBooks)}  {t("นำตำราเข้าห้องสอบได้")}</div><div>{mark(Boolean(cover.specialInstructions))} {cover.specialInstructions || <span className="inline-block w-4/5 border-b border-dotted border-slate-600">&nbsp;</span>}</div>
+              <div>{mark(cover.permittedCalculator)}  {t("นำเครื่องคิดเลขเข้าห้องสอบได้")}</div><div>( &nbsp; ) <span className="inline-block w-4/5 border-b border-dotted border-slate-600">&nbsp;</span></div>
+              <div>{mark(cover.prohibitsFormulaRuler)}  {t("ห้ามนำไม้บรรทัดมีสูตรคณิตศาสตร์เข้าห้องสอบ")}</div><div>( &nbsp; ) <span className="inline-block w-4/5 border-b border-dotted border-slate-600">&nbsp;</span></div>
             </div>
             <div className="mt-4 grid grid-cols-[auto_1fr] gap-2">
-              <span>{t("ผู้ออกข้อสอบ")}</span><span className={lineClass}>{exam.instructor_name || '-'}</span>
+              <span>{t("ผู้ออกข้อสอบ")}</span><span className={lineClass}>{cover.instructorName}</span>
             </div>
-            <div className="mt-3 grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_1fr]">
-              <span>{t("ห้องทำงาน")}</span><span className={lineClass}>{exam.instructor_office_room || ''}</span>
-              <span>{t("โทรศัพท์/มือถือ")}</span><span className={lineClass}>{exam.instructor_phone || ''}</span>
+            <div className="print-cover-grid-details mt-3 grid grid-cols-[auto_1fr] gap-2 md:grid-cols-[auto_1fr_auto_1fr]">
+              <span>{t("ห้องทำงาน")}</span><span className={lineClass}>{cover.officeRoom === '-' ? '' : cover.officeRoom}</span>
+              <span>{t("โทรศัพท์/มือถือ")}</span><span className={lineClass}>{cover.instructorPhone === '-' ? '' : cover.instructorPhone}</span>
             </div>
           </div>
 

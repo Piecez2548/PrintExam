@@ -36,11 +36,11 @@ export interface Course {
   id: number;
   course_code: string;
   course_name: string;
+  department?: string;
   instructor_id: number;
   instructor_name?: string;
   instructor_email?: string;
   instructor_department?: string;
-  department?: string;
   section?: string;
   semester: number;
   student_count?: number;
@@ -120,6 +120,7 @@ export interface Exam {
   schedule_id?: number;
   course_code: string;
   course_name: string;
+  department?: string;
   semester?: number;
   academic_year?: string;
   instructor_id?: number;
