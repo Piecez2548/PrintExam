@@ -123,7 +123,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
 
         {/* Right side controls */}
         <div className="flex shrink-0 items-center gap-1 sm:gap-3">
-          <PreferenceControls compact />
           {/* WebSocket Status indicator */}
           <div
             title={isConnected ? t("เชื่อมต่อ Real-time WebSocket แล้ว") : t("กำลังเชื่อมต่อ Real-time...")}
@@ -140,6 +139,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
                 <span className="hidden sm:inline text-[11px] text-amber-600 font-medium">{t('Offline')}</span>
               </>
             )}
+          </div>
+
+          <div className="hidden lg:flex">
+            <PreferenceControls compact />
           </div>
 
           {/* Notifications Popover */}
@@ -231,6 +234,11 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
           {user && (
             <div className="relative" ref={profileRef}>
               <button
+                type="button"
+                aria-label={t("โปรไฟล์และรหัสผ่าน")}
+                aria-haspopup="true"
+                aria-expanded={isProfileOpen}
+                aria-controls="profile-menu"
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
                 className="flex items-center gap-2.5 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
               >
@@ -249,7 +257,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
               </button>
 
               {isProfileOpen && (
-                <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div id="profile-menu" className="absolute right-0 mt-2 w-64 rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
                   <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
                     <div className="text-xs font-bold text-slate-900 dark:text-white">
                       {user.full_name}
@@ -260,6 +268,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
                     <div className="mt-2">
                       <RoleBadge role={user.role} size="sm" />
                     </div>
+                  </div>
+
+                  <div className="border-b border-slate-100 px-3 py-3 dark:border-slate-800 lg:hidden">
+                    <PreferenceControls />
                   </div>
 
                   <div className="py-1">
