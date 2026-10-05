@@ -23,6 +23,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 import { localizedApiError } from '../../api/localizedError';
+import { filterCoordinatorCourses, filterCoordinatorSchedules } from '../../utils/coordinatorCourseFilters';
 import {
   formatCalendarDate,
   getLatestAllowedDeadlineDate,
@@ -67,6 +68,8 @@ export const CourseSchedulePage: React.FC = () => {
 
   // Filters
   const [filterInstructorId, setFilterInstructorId] = useState<string>('');
+  const [filterSemester, setFilterSemester] = useState<string>('all');
+  const [filterAcademicYear, setFilterAcademicYear] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Add/Edit Schedule Modal State - Only MIDTERM and FINAL
@@ -110,27 +113,16 @@ export const CourseSchedulePage: React.FC = () => {
   }, []);
 
   // Filtered lists
-  const filteredCourses = courses.filter((c) => {
-    const matchInstructor = !filterInstructorId || c.instructor_id.toString() === filterInstructorId;
-    const matchSearch =
-      !searchQuery ||
-      c.course_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.course_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.instructor_name && c.instructor_name.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchInstructor && matchSearch;
-  });
-
-  const filteredSchedules = schedules.filter((s) => {
-    const matchInstructor =
-      !filterInstructorId ||
-      courses.find((c) => c.id === s.course_id)?.instructor_id.toString() === filterInstructorId;
-    const matchSearch =
-      !searchQuery ||
-      s.course_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.course_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (s.instructor_name && s.instructor_name.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchInstructor && matchSearch;
-  });
+  const courseFilters = {
+    search: searchQuery,
+    instructorId: filterInstructorId,
+    semester: filterSemester,
+    academicYear: filterAcademicYear,
+  };
+  const filteredCourses = filterCoordinatorCourses(courses, courseFilters);
+  const filteredSchedules = filterCoordinatorSchedules(schedules, courses, courseFilters);
+  const academicYearOptions = Array.from(new Set(courses.map((course) => course.academic_year)))
+    .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
 
   // Courses that DO NOT have an exam schedule yet
   const scheduledCourseIds = new Set(schedules.map((schedule) => schedule.course_id));
@@ -356,8 +348,8 @@ export const CourseSchedulePage: React.FC = () => {
       )}
 
       {/* Filter and Search Bar */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row gap-3 items-center justify-between">
-        <div className="relative w-full sm:w-80">
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row gap-3 items-center justify-between">
+        <div className="relative w-full lg:w-80">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
@@ -368,14 +360,14 @@ export const CourseSchedulePage: React.FC = () => {
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto text-xs">
+        <div className="flex flex-wrap items-center justify-start lg:justify-end gap-2 w-full lg:w-auto text-xs">
           <span className="text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap flex items-center gap-1">
             <Filter className="w-3.5 h-3.5" />  {t("อาจารย์:")}
           </span>
           <select
             value={filterInstructorId}
             onChange={(e) => setFilterInstructorId(e.target.value)}
-            className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-medium"
+            className="min-w-0 flex-1 lg:flex-none bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-medium"
           >
             <option value="">{t("อาจารย์ทุกคน (")}{instructors.length}  {t("ท่าน)")}</option>
             {instructors.map((inst) => (
@@ -383,6 +375,30 @@ export const CourseSchedulePage: React.FC = () => {
                 {inst.full_name} ({inst.department || t("อาจารย์")})
               </option>
             ))}
+          </select>
+          <label className="sr-only" htmlFor="coordinator-semester-filter">{t('ภาคการศึกษา')}</label>
+          <select
+            id="coordinator-semester-filter"
+            aria-label={t('ภาคการศึกษา')}
+            value={filterSemester}
+            onChange={(e) => setFilterSemester(e.target.value)}
+            className="min-w-0 flex-1 lg:flex-none bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-medium"
+          >
+            <option value="all">{t('ทุกภาคการศึกษา')}</option>
+            <option value="1">{t('ภาค {{v0}}', { v0: 1 })}</option>
+            <option value="2">{t('ภาค {{v0}}', { v0: 2 })}</option>
+            <option value="3">{t('ภาคฤดูร้อน')}</option>
+          </select>
+          <label className="sr-only" htmlFor="coordinator-academic-year-filter">{t('ปีการศึกษา')}</label>
+          <select
+            id="coordinator-academic-year-filter"
+            aria-label={t('ปีการศึกษา')}
+            value={filterAcademicYear}
+            onChange={(e) => setFilterAcademicYear(e.target.value)}
+            className="min-w-0 flex-1 lg:flex-none bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-medium"
+          >
+            <option value="all">{t('ทุกปีการศึกษา')}</option>
+            {academicYearOptions.map((year) => <option key={year} value={year}>{year}</option>)}
           </select>
         </div>
       </div>
@@ -428,7 +444,11 @@ export const CourseSchedulePage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredCourses.map((course) => {
+                {isLoading ? (
+                  <tr><td colSpan={6} className="py-12 text-center text-slate-400">{t('กำลังโหลดข้อมูล...')}</td></tr>
+                ) : filteredCourses.length === 0 ? (
+                  <tr><td colSpan={6} className="py-12 text-center text-slate-400">{t('ไม่พบรายวิชาตามเงื่อนไขที่เลือก')}</td></tr>
+                ) : filteredCourses.map((course) => {
                   const hasSchedule = scheduledCourseIds.has(course.id);
                   return (
                     <tr key={course.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
