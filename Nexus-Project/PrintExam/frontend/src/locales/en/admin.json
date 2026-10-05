@@ -163,5 +163,10 @@
   "วันสอบ": "Exam Date",
   "เวลาสอบ": "Exam Time",
   "แก้ไขผู้ใช้": "Edit",
-  "เปิดใช้งานผู้ใช้": "Activate user"
+  "สังกัด / คณะ": "Faculty / Organization",
+  "เลือกสังกัดหรือคณะ": "Select faculty or organization",
+  "ข้อมูลเดิม": "Legacy value",
+  "เปิดใช้งานผู้ใช้": "Activate user",
+  "ชื่อผู้ใช้ใช้ได้เฉพาะตัวอักษรภาษาอังกฤษ ตัวเลข และ . _ - เท่านั้น (3-64 ตัว)": "Username may contain only English letters, numbers, and . _ - (3-64 characters).",
+  "เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลัก ในรูปแบบ 000-000-0000": "Phone number must contain 10 digits in the format 000-000-0000."
 }

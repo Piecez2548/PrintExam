@@ -93,6 +93,8 @@ async function setup(t: TestContext, options: { retained?: Record<string, number
   let targetExists = options.targetExists ?? true;
   const retained = options.retained || {};
   const retainedCalls: Record<string, any> = {};
+  const createdUsers: AnyRecord[] = [];
+  let nextUserId = 4;
   let notificationCount = options.notificationCount ?? 0;
   let notificationDeleteCalls = 0;
   let deletedIds: number[] = [];
@@ -100,8 +102,25 @@ async function setup(t: TestContext, options: { retained?: Record<string, number
 
   stubMethod(t, prisma.user, 'findUnique', async ({ where }: AnyRecord) => users.get(where.id) || null);
   stubMethod(t, prisma.user, 'findFirst', async ({ where }: AnyRecord) => {
-    const identifier = where?.OR?.[0]?.username?.equals;
-    return [...users.values()].find((user) => user.username.toLowerCase() === String(identifier || '').toLowerCase()) || null;
+    const usernameQuery = where?.OR?.find((clause: AnyRecord) => clause.username)?.username?.equals;
+    const emailQuery = where?.OR?.find((clause: AnyRecord) => clause.email)?.email?.equals;
+    return [...users.values()].find((user) =>
+      (usernameQuery && user.username.toLowerCase() === String(usernameQuery).toLowerCase())
+      || (emailQuery && user.email.toLowerCase() === String(emailQuery).toLowerCase())
+    ) || null;
+  });
+  stubMethod(t, prisma.user, 'create', async ({ data }: AnyRecord) => {
+    const user = {
+      ...makeUser(nextUserId, data.role),
+      ...data,
+      id: nextUserId,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+    nextUserId += 1;
+    users.set(user.id, user);
+    createdUsers.push(user);
+    return user;
   });
   stubMethod(t, prisma.user, 'update', async ({ where, data }: AnyRecord) => {
     const user = users.get(where.id);
@@ -161,6 +180,8 @@ async function setup(t: TestContext, options: { retained?: Record<string, number
 
   return {
     server,
+    postUser: (body: unknown, token = tokenFor(admin)) => send(server, 'POST', '/api/users', token, body),
+    createdUsers,
     admin,
     target,
     unrelated,
@@ -174,6 +195,220 @@ async function setup(t: TestContext, options: { retained?: Record<string, number
     setTargetExists: (value: boolean) => { targetExists = value; },
   };
 }
+
+test('ADMIN can create every supported role with normalized ASCII username, phone, and unchanged first-login metadata', async (t) => {
+  const state = await setup(t);
+  const roles = ['INSTRUCTOR', 'AV_STAFF', 'COORDINATOR'] as const;
+
+  for (const [index, role] of roles.entries()) {
+    const result = await state.postUser({
+      username: ` qa.user_${index + 1}-x `,
+      password: 'Valid@Password123',
+      full_name: `QA User ${index + 1}`,
+      email: `create-${index + 1}@example.test`,
+      role,
+      phone: index === 1 ? '081-234-5678' : '0812345678',
+    });
+    assert.equal(result.status, 201);
+    assert.equal(result.body.data.username, `qa.user_${index + 1}-x`);
+    assert.equal(result.body.data.role, role);
+    assert.equal(result.body.data.phone, '081-234-5678');
+    assert.equal(state.createdUsers[index].mustChangePassword, true);
+    assert.equal(bcrypt.compareSync('Valid@Password123', state.createdUsers[index].passwordHash), true);
+  }
+
+  const numericUsername = await state.postUser({
+    username: '123456',
+    password: 'Valid@Password123',
+    full_name: 'QA Numeric Username',
+    email: 'numeric-username@example.test',
+    role: 'INSTRUCTOR',
+  });
+  assert.equal(numericUsername.status, 201);
+  assert.equal(numericUsername.body.data.username, '123456');
+
+  const withoutPhone = await state.postUser({
+    username: 'qa.phone-empty',
+    password: 'Valid@Password123',
+    full_name: 'QA Optional Phone',
+    email: 'optional-phone@example.test',
+    role: 'INSTRUCTOR',
+    phone: '',
+  });
+  assert.equal(withoutPhone.status, 201);
+  assert.equal(withoutPhone.body.data.phone, null);
+
+  const duplicateUsername = await state.postUser({
+    username: state.admin.username,
+    password: 'Valid@Password123',
+    full_name: 'Duplicate Username',
+    email: 'unique-email@example.test',
+    role: 'INSTRUCTOR',
+  });
+  assert.equal(duplicateUsername.status, 409);
+
+  const duplicateEmail = await state.postUser({
+    username: 'new-unique-username',
+    password: 'Valid@Password123',
+    full_name: 'Duplicate Email',
+    email: state.admin.email,
+    role: 'INSTRUCTOR',
+  });
+  assert.equal(duplicateEmail.status, 409);
+});
+
+test('create-user accepts only canonical PSU Hat Yai organizations while keeping department optional', async (t) => {
+  const state = await setup(t);
+  const canonical = 'คณะวิศวกรรมศาสตร์';
+  const accepted = await state.postUser({
+    username: 'qa-hatyai-org',
+    password: 'Valid@Password123',
+    full_name: 'QA Hat Yai Organization',
+    email: 'hatyai-org@example.test',
+    role: 'INSTRUCTOR',
+    department: canonical,
+  });
+  assert.equal(accepted.status, 201);
+  assert.equal(accepted.body.data.department, canonical);
+
+  const arbitrary = await state.postUser({
+    username: 'qa-arbitrary-org',
+    password: 'Valid@Password123',
+    full_name: 'QA Arbitrary Organization',
+    email: 'arbitrary-org@example.test',
+    role: 'INSTRUCTOR',
+    department: 'Computer Science',
+  });
+  assert.equal(arbitrary.status, 400);
+  assert.equal(arbitrary.body.code, 'INVALID_PSU_ORGANIZATION');
+
+  const empty = await state.postUser({
+    username: 'qa-empty-org',
+    password: 'Valid@Password123',
+    full_name: 'QA Empty Organization',
+    email: 'empty-org@example.test',
+    role: 'INSTRUCTOR',
+    department: '',
+  });
+  assert.equal(empty.status, 201);
+  assert.equal(empty.body.data.department, null);
+});
+
+test('creating users requires authentication and ADMIN role', async (t) => {
+  const state = await setup(t);
+  const body = {
+    username: 'qa-new-user',
+    password: 'Valid@Password123',
+    full_name: 'QA New User',
+    email: 'qa-new-user@example.test',
+    role: 'INSTRUCTOR',
+  };
+  const unauthenticated = await send(state.server, 'POST', '/api/users', undefined, body);
+  assert.equal(unauthenticated.status, 401);
+
+  const instructor = makeUser(5, 'INSTRUCTOR');
+  state.users.set(instructor.id, instructor);
+  const nonAdmin = await state.postUser(body, tokenFor(instructor));
+  assert.equal(nonAdmin.status, 403);
+  assert.equal(state.createdUsers.length, 0);
+});
+
+test('create-user rejects non-ASCII, whitespace, and unsupported username characters', async (t) => {
+  const state = await setup(t);
+  for (const [index, username] of ['ผู้ใช้ใหม่', 'has space', 'name+tag', 'ab', 'x'.repeat(65)].entries()) {
+    const result = await state.postUser({
+      username,
+      password: 'Valid@Password123',
+      full_name: `Invalid User ${index}`,
+      email: `invalid-user-${index}@example.test`,
+      role: 'INSTRUCTOR',
+    });
+    assert.equal(result.status, 400);
+    assert.match(result.body.message, /ตัวอักษรภาษาอังกฤษ/);
+  }
+  assert.equal(state.createdUsers.length, 0);
+});
+
+test('create-user rejects malformed phone values and keeps password policy enforced', async (t) => {
+  const state = await setup(t);
+  for (const [index, phone] of ['081234567', '08123456789', '081-ABC-5678', '081-23-5678'].entries()) {
+    const result = await state.postUser({
+      username: `qa-phone-${index}`,
+      password: 'Valid@Password123',
+      full_name: `Invalid Phone ${index}`,
+      email: `invalid-phone-${index}@example.test`,
+      role: 'INSTRUCTOR',
+      phone,
+    });
+    assert.equal(result.status, 400);
+    assert.match(result.body.message, /10 หลัก/);
+  }
+
+  const weakPassword = await state.postUser({
+    username: 'qa-weak-password',
+    password: 'weakpassword123',
+    full_name: 'QA Weak Password',
+    email: 'weak-password@example.test',
+    role: 'INSTRUCTOR',
+  });
+  assert.equal(weakPassword.status, 400);
+  assert.equal(state.createdUsers.length, 0);
+});
+
+test('Admin can edit a user with an unchanged legacy phone and cannot set a malformed new phone', async (t) => {
+  const state = await setup(t);
+  state.target.phone = '02-555-0100';
+  state.target.department = 'Legacy department';
+
+  const unchanged = await send(state.server, 'PUT', `/api/users/${state.target.id}`, tokenFor(state.admin), {
+    full_name: 'Edited QA User',
+    phone: '02-555-0100',
+    department: 'Legacy department',
+  });
+  assert.equal(unchanged.status, 200);
+  assert.equal(state.target.phone, '02-555-0100');
+  assert.equal(state.target.department, 'Legacy department');
+
+  const invalidChangedPhone = await send(state.server, 'PUT', `/api/users/${state.target.id}`, tokenFor(state.admin), {
+    full_name: 'Edited QA User',
+    phone: '02-555-0101',
+  });
+  assert.equal(invalidChangedPhone.status, 400);
+  assert.equal(state.target.phone, '02-555-0100');
+});
+
+test('admin organization edits accept canonical changes and preserve unchanged legacy values, but reject new arbitrary values', async (t) => {
+  const state = await setup(t);
+  state.target.department = 'คณะวิทยาศาสตร์';
+
+  const canonicalChange = await send(state.server, 'PUT', `/api/users/${state.target.id}`, tokenFor(state.admin), {
+    department: 'คณะวิศวกรรมศาสตร์',
+  });
+  assert.equal(canonicalChange.status, 200);
+  assert.equal(state.target.department, 'คณะวิศวกรรมศาสตร์');
+
+  state.target.department = 'วิทยาการคอมพิวเตอร์';
+  const unchangedLegacy = await send(state.server, 'PUT', `/api/users/${state.target.id}`, tokenFor(state.admin), {
+    full_name: 'Still Editable',
+    department: 'วิทยาการคอมพิวเตอร์',
+  });
+  assert.equal(unchangedLegacy.status, 200);
+  assert.equal(state.target.department, 'วิทยาการคอมพิวเตอร์');
+
+  const legacyToCanonical = await send(state.server, 'PUT', `/api/users/${state.target.id}`, tokenFor(state.admin), {
+    department: 'คณะวิศวกรรมศาสตร์',
+  });
+  assert.equal(legacyToCanonical.status, 200);
+  assert.equal(state.target.department, 'คณะวิศวกรรมศาสตร์');
+
+  state.target.department = 'วิทยาการคอมพิวเตอร์';
+  const arbitraryChange = await send(state.server, 'PUT', `/api/users/${state.target.id}`, tokenFor(state.admin), {
+    department: 'CS',
+  });
+  assert.equal(arbitraryChange.status, 400);
+  assert.equal(arbitraryChange.body.code, 'INVALID_PSU_ORGANIZATION');
+  assert.equal(state.target.department, 'วิทยาการคอมพิวเตอร์');
+});
 
 test('user deletion requires authentication and ADMIN role', async (t) => {
   const state = await setup(t);

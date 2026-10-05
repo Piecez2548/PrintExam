@@ -106,5 +106,8 @@
   "Entity:": "Entity:",
   "JSON Payload & Request Diff:": "JSON payload and request diff:",
   "Username:": "Username:",
-  "โปรดตรวจสอบรายละเอียดในระบบ": "Please check the details in the app."
+  "โปรดตรวจสอบรายละเอียดในระบบ": "Please check the details in the app.",
+  "Username may contain only English letters, numbers, and . _ - (3-64 characters).": "Username may contain only English letters, numbers, and . _ - (3-64 characters).",
+  "Phone number must contain 10 digits in the format 000-000-0000.": "Phone number must contain 10 digits in the format 000-000-0000.",
+  "Select a valid PSU Hat Yai organization.": "Select a valid PSU Hat Yai organization."
 }

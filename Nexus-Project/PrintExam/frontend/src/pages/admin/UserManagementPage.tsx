@@ -21,9 +21,17 @@ import {
 import { useTranslation } from 'react-i18next';
 import { localizedApiError } from '../../api/localizedError';
 import i18n from '../../i18n';
+import { formatPhoneInput, isCompletePhone, USERNAME_PATTERN } from '../../utils/userManagementInput';
+import {
+  getPsuOrganizationLabel,
+  getPsuOrganizationOptionLabel,
+  isCanonicalPsuHatYaiOrganization,
+  PSU_HATYAI_ORGANIZATIONS,
+} from '../../utils/psuHatYaiOrganizations';
 
 export const UserManagementPage: React.FC = () => {
   const { t } = useTranslation("admin");
+  const organizationLanguage = i18n.resolvedLanguage;
 
   const toast = useToast();
   const [users, setUsers] = useState<User[]>([]);
@@ -43,6 +51,8 @@ export const UserManagementPage: React.FC = () => {
   const [role, setRole] = useState<UserRole>(UserRole.INSTRUCTOR);
   const [department, setDepartment] = useState('');
   const [phone, setPhone] = useState('');
+  const [originalPhone, setOriginalPhone] = useState('');
+  const [showDefaultPassword, setShowDefaultPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Delete Confirmation Modal State
@@ -90,13 +100,24 @@ export const UserManagementPage: React.FC = () => {
     setRole(UserRole.INSTRUCTOR);
     setDepartment('');
     setPhone('');
+    setOriginalPhone('');
+    setShowDefaultPassword(false);
     setEditingUserId(null);
   };
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !fullName || !email) {
+    const normalizedUsername = username.trim();
+    if (!normalizedUsername || !fullName.trim() || !email.trim()) {
       toast.warning(t("กรุณากรอกข้อมูลให้ครบถ้วน"));
+      return;
+    }
+    if (!editingUserId && !USERNAME_PATTERN.test(normalizedUsername)) {
+      toast.warning(t("ชื่อผู้ใช้ใช้ได้เฉพาะตัวอักษรภาษาอังกฤษ ตัวเลข และ . _ - เท่านั้น (3-64 ตัว)"));
+      return;
+    }
+    if (phone && phone !== originalPhone && !isCompletePhone(phone)) {
+      toast.warning(t("เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลัก ในรูปแบบ 000-000-0000"));
       return;
     }
 
@@ -113,7 +134,7 @@ export const UserManagementPage: React.FC = () => {
         toast.success(t("อัปเดตข้อมูลผู้ใช้งานสำเร็จ"));
       } else {
         await usersApi.createUser({
-          username,
+          username: normalizedUsername,
           password,
           full_name: fullName,
           email,
@@ -372,6 +393,7 @@ export const UserManagementPage: React.FC = () => {
                             setRole(u.role);
                             setDepartment(u.department || '');
                             setPhone(u.phone || '');
+                            setOriginalPhone(u.phone || '');
                             setIsModalOpen(true);
                           }}
                           className="inline-flex min-h-9 w-full items-center justify-center whitespace-nowrap rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
@@ -436,6 +458,7 @@ export const UserManagementPage: React.FC = () => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
+                  maxLength={64}
                   placeholder={t("เช่น somchai.j")}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
                 />
@@ -445,16 +468,27 @@ export const UserManagementPage: React.FC = () => {
 
                   {t("รหัสผ่านเริ่มต้น (Default Password) *")}
                 </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={12}
-                  autoComplete="new-password"
-                  placeholder={t("12+ ตัว: A-Z, a-z, 0-9 และอักขระพิเศษ")}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
-                />
+                <div className="relative">
+                  <input
+                    type={showDefaultPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={12}
+                    autoComplete="new-password"
+                    placeholder={t("12+ ตัว: A-Z, a-z, 0-9 และอักขระพิเศษ")}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-3 pr-10 py-2 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowDefaultPassword((visible) => !visible)}
+                    aria-label={showDefaultPassword ? t("ซ่อนรหัสผ่าน") : t("แสดงรหัสผ่าน")}
+                    aria-pressed={showDefaultPassword}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:text-slate-300 dark:hover:bg-slate-700"
+                  >
+                    {showDefaultPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -495,10 +529,12 @@ export const UserManagementPage: React.FC = () => {
                 {t("เบอร์โทรศัพท์")}
               </label>
               <input
-                type="text"
+                type="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="081-234-5678"
+                onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
+                inputMode="numeric"
+                maxLength={12}
+                placeholder="000-000-0000"
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
               />
             </div>
@@ -524,15 +560,25 @@ export const UserManagementPage: React.FC = () => {
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
 
-                {t("สังกัด / คณะ / ภาควิชา")}
+                {t("สังกัด / คณะ")}
               </label>
-              <input
-                type="text"
+              <select
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
-                placeholder={t("เช่น วิศวกรรมคอมพิวเตอร์")}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
-              />
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              >
+                <option value="">{t("เลือกสังกัดหรือคณะ")}</option>
+                {PSU_HATYAI_ORGANIZATIONS.map((organization) => (
+                  <option key={organization.key} value={organization.th}>
+                    {getPsuOrganizationLabel(organization, organizationLanguage)}
+                  </option>
+                ))}
+                {editingUserId && department && !isCanonicalPsuHatYaiOrganization(department) && (
+                  <option value={department}>
+                    {getPsuOrganizationOptionLabel(department, organizationLanguage, t("ข้อมูลเดิม"))}
+                  </option>
+                )}
+              </select>
             </div>
           </div>
 
