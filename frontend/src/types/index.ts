@@ -78,8 +78,26 @@ export interface ExamStatusHistory {
   to_status: string;
   action_by: number;
   action_name: string;
+  action_role?: string;
   action_at: string;
   note?: string;
+}
+
+export interface ExamAuditTrailItem {
+  id: number;
+  event_type: 'STATUS_CHANGE' | 'DATA_EDIT';
+  action_at: string;
+  action_name: string;
+  action_role?: string;
+  action_by?: number | null;
+  to_status?: string;
+  from_status?: string | null;
+  note?: string | null;
+  action?: string;
+  entity_type?: string;
+  entity_id?: string | null;
+  exam_id?: number;
+  changes?: Record<string, { before: unknown; after: unknown }>;
 }
 
 export interface PrintRecord {
@@ -160,6 +178,7 @@ export interface Exam {
   updated_at: string;
   coordinator_name?: string;
   status_history?: ExamStatusHistory[];
+  audit_trail?: ExamAuditTrailItem[];
   print_records?: PrintRecord[];
   packing_records?: PackingRecord[];
   delivery_records?: DeliveryRecord[];

@@ -234,7 +234,7 @@ export const ExamDetailPage: React.FC = () => {
       <DeadlineNotice exam={exam} />
 
       {/* Status Progress Stepper */}
-      <StatusTimeline currentStatus={exam.status} history={exam.status_history} />
+      <StatusTimeline currentStatus={exam.status} history={exam.audit_trail || exam.status_history} />
 
       {/* Detailed Specs Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

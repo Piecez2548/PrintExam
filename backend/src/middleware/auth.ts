@@ -21,6 +21,7 @@ export interface UserDTO {
 
 export interface AuthRequest extends Request {
   user?: UserDTO;
+  auditHandledAtomically?: boolean;
 }
 
 export async function authenticateToken(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {

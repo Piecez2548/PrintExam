@@ -6,6 +6,7 @@ import { UserRole, ExamType, ScheduleStatus, Prisma } from '../../generated/pris
 import { recordAuditLog } from '../middleware/audit';
 import { createNotification } from '../services/notificationService';
 import { isDeadlineAtLeastTwoDaysBeforeExam, normalizeStoredCalendarDate } from '../data/examScheduleDeadline';
+import { buildAuditChanges } from '../data/auditTrail';
 
 const router = Router();
 
@@ -323,6 +324,9 @@ router.put(
         return;
       }
       const updated = await prisma.$transaction(async (tx) => {
+        const transactionCurrent = await tx.examSchedule.findUnique({ where: { id: scheduleId } });
+        if (!transactionCurrent) throw new Error('Schedule not found');
+        const relatedExams = await tx.exam.findMany({ where: { scheduleId }, select: { id: true } });
         const saved = await tx.examSchedule.update({
           where: { id: scheduleId },
           data: {
@@ -352,23 +356,55 @@ router.put(
             data: { deadlineAt: new Date(`${nextDeadline}T23:59:59.999+07:00`) },
           });
         }
+        const scheduleAuditBefore: Record<string, unknown> = {
+          course_id: transactionCurrent.courseId,
+          exam_type: transactionCurrent.examType,
+          exam_date: normalizeStoredCalendarDate(transactionCurrent.examDate) ?? transactionCurrent.examDate,
+          start_time: transactionCurrent.startTime,
+          end_time: transactionCurrent.endTime,
+          room: transactionCurrent.room,
+          section: transactionCurrent.section,
+          coordinator_id: transactionCurrent.coordinatorId,
+          deadline_date: normalizeStoredCalendarDate(transactionCurrent.deadlineDate) ?? transactionCurrent.deadlineDate,
+        };
+        const scheduleAuditAfter: Record<string, unknown> = {
+          course_id: saved.courseId,
+          exam_type: saved.examType,
+          exam_date: normalizeStoredCalendarDate(saved.examDate) ?? saved.examDate,
+          start_time: saved.startTime,
+          end_time: saved.endTime,
+          room: saved.room,
+          section: saved.section,
+          coordinator_id: saved.coordinatorId,
+          deadline_date: normalizeStoredCalendarDate(saved.deadlineDate) ?? saved.deadlineDate,
+        };
+        const scheduleChanges = buildAuditChanges(scheduleAuditBefore, scheduleAuditAfter, Object.keys(scheduleAuditBefore));
+        const changedScheduleData = Object.keys(scheduleChanges).length > 0;
+        const scheduleStatusChanged = saved.status !== transactionCurrent.status;
+        if (changedScheduleData || scheduleStatusChanged) {
+          await tx.auditLog.create({
+            data: {
+              userId: req.user!.id,
+              userName: req.user!.full_name,
+              userRole: req.user!.role,
+              action: 'UPDATE_SCHEDULE',
+              entityType: 'SCHEDULE',
+              entityId: String(scheduleId),
+              ipAddress: req.ip || '127.0.0.1',
+              detailJson: JSON.stringify({
+                audit_version: 1,
+                updated_fields: { exam_date, room, status },
+                related_exam_ids: relatedExams.map((entry) => entry.id),
+                related_entity_type: 'SCHEDULE',
+                related_entity_id: scheduleId,
+                changes: scheduleChanges,
+              }),
+            },
+          });
+        }
         return saved;
       });
-
-      await recordAuditLog(
-        req.user!.id,
-        req.user!.full_name,
-        req.user!.role,
-        'UPDATE_SCHEDULE',
-        'SCHEDULE',
-        id,
-        req.ip || '127.0.0.1',
-        {
-          exam_date,
-          room,
-          status,
-        }
-      );
+      req.auditHandledAtomically = true;
 
       res.json({ success: true, message: 'อัปเดตกำหนดการสอบสำเร็จ', data: formatSchedule(updated) });
     } catch (error) {
