@@ -75,7 +75,7 @@ export function auditMiddleware(req: AuthRequest, res: Response, next: NextFunct
 
     res.json = function (body: any): Response {
       // If the operation succeeded, record in audit logs
-      if (res.statusCode >= 200 && res.statusCode < 300) {
+      if (res.statusCode >= 200 && res.statusCode < 300 && !req.auditHandledAtomically) {
         const action = `${req.method}_${(req.baseUrl || '').replace('/api/', '').toUpperCase()}`;
         const user = req.user;
         const targetId = req.params?.id || body?.data?.id || null;

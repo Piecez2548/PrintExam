@@ -5,6 +5,7 @@ import { requireRole } from '../middleware/rbac';
 import { UserRole, Prisma } from '../../generated/prisma';
 import { recordAuditLog } from '../middleware/audit';
 import { notifyRole } from '../services/notificationService';
+import { buildAuditChanges } from '../data/auditTrail';
 
 const router = Router();
 
@@ -217,35 +218,70 @@ router.put(
           return;
         }
       }
-      const updated = await prisma.course.update({
-        where: { id: courseId },
-        data: {
-          courseCode: course_code ? course_code.toUpperCase() : undefined,
-          courseName: course_name !== undefined ? course_name : undefined,
-          instructorId: instructor_id !== undefined ? Number(instructor_id) : undefined,
-          department: department !== undefined ? department : undefined,
-          section: section !== undefined ? String(section).trim() || null : undefined,
-          semester: semester !== undefined ? Number(semester) : undefined,
-          studentCount: student_count !== undefined ? Number(student_count) : undefined,
-          academicYear: academic_year !== undefined ? String(academic_year) : undefined,
-        },
-        include: {
-          instructor: true,
-        },
-      });
-
-      await recordAuditLog(
-        req.user!.id,
-        req.user!.full_name,
-        req.user!.role,
-        'UPDATE_COURSE',
-        'COURSE',
-        id,
-        req.ip || '127.0.0.1',
-        {
-          updated_fields: { course_code, course_name, instructor_id },
+      const courseUpdateData = {
+        courseCode: course_code ? course_code.toUpperCase() : undefined,
+        courseName: course_name !== undefined ? course_name : undefined,
+        instructorId: instructor_id !== undefined ? Number(instructor_id) : undefined,
+        department: department !== undefined ? department : undefined,
+        section: section !== undefined ? String(section).trim() || null : undefined,
+        semester: semester !== undefined ? Number(semester) : undefined,
+        studentCount: student_count !== undefined ? Number(student_count) : undefined,
+        academicYear: academic_year !== undefined ? String(academic_year) : undefined,
+      };
+      const updated = await prisma.$transaction(async (tx) => {
+        const current = await tx.course.findUnique({ where: { id: courseId } });
+        if (!current) throw new Error('Course not found');
+        const saved = await tx.course.update({
+          where: { id: courseId },
+          data: courseUpdateData,
+          include: { instructor: true },
+        });
+        const courseAuditBefore: Record<string, unknown> = {
+          course_code: current.courseCode,
+          course_name: current.courseName,
+          instructor_id: current.instructorId,
+          department: current.department,
+          section: current.section,
+          semester: current.semester,
+          student_count: current.studentCount,
+          academic_year: current.academicYear,
+        };
+        const courseAuditAfter: Record<string, unknown> = {
+          course_code: saved.courseCode,
+          course_name: saved.courseName,
+          instructor_id: saved.instructorId,
+          department: saved.department,
+          section: saved.section,
+          semester: saved.semester,
+          student_count: saved.studentCount,
+          academic_year: saved.academicYear,
+        };
+        const courseChanges = buildAuditChanges(courseAuditBefore, courseAuditAfter, Object.keys(courseAuditBefore));
+        if (Object.keys(courseChanges).length > 0) {
+          const relatedExams = await tx.exam.findMany({ where: { courseId }, select: { id: true } });
+          await tx.auditLog.create({
+            data: {
+              userId: req.user!.id,
+              userName: req.user!.full_name,
+              userRole: req.user!.role,
+              action: 'UPDATE_COURSE',
+              entityType: 'COURSE',
+              entityId: String(courseId),
+              ipAddress: req.ip || '127.0.0.1',
+              detailJson: JSON.stringify({
+                audit_version: 1,
+                updated_fields: { course_code, course_name, instructor_id },
+                related_exam_ids: relatedExams.map((entry) => entry.id),
+                related_entity_type: 'COURSE',
+                related_entity_id: courseId,
+                changes: courseChanges,
+              }),
+            },
+          });
         }
-      );
+        return saved;
+      });
+      req.auditHandledAtomically = true;
 
       res.json({ success: true, message: 'แก้ไขข้อมูลรายวิชาสำเร็จ', data: formatCourse(updated) });
     } catch (error) {

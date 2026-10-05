@@ -38,11 +38,12 @@ function send(server: Server, method: 'POST' | 'PUT', path: string, body: unknow
 }
 
 async function setup(t: TestContext) {
-  const [{ default: scheduleRoutes }, { prisma }, { JWT_SECRET }, { UserRole, ExamType, ScheduleStatus }] = await Promise.all([
+  const [{ default: scheduleRoutes }, { prisma }, { JWT_SECRET }, { UserRole, ExamType, ScheduleStatus }, { auditMiddleware }] = await Promise.all([
     import('./scheduleRoutes'),
     import('../database/prisma'),
     import('../config/constants'),
     import('../../generated/prisma'),
+    import('../middleware/audit'),
   ]);
 
   const coordinator = {
@@ -81,16 +82,49 @@ async function setup(t: TestContext) {
     deadlineDate: '2026-10-17',
     status: ScheduleStatus.CONFIRMED,
   };
-  const writes = { creates: 0, transactions: 0 };
+  const writes: { creates: number; transactions: number; audits: AnyRecord[]; middlewareAudits: AnyRecord[]; txOrder: string[] } = {
+    creates: 0,
+    transactions: 0,
+    audits: [],
+    middlewareAudits: [],
+    txOrder: [],
+  };
+  const tx = {
+    exam: {
+      findMany: async () => [{ id: 901 }],
+      updateMany: async () => { writes.txOrder.push('exam.updateMany'); return { count: 0 }; },
+    },
+    examSchedule: {
+      findUnique: async () => currentSchedule,
+      update: async ({ data }: AnyRecord) => {
+        writes.txOrder.push('schedule.update');
+        const persistedFields = Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined));
+        return { ...currentSchedule, ...persistedFields, course, coordinator };
+      },
+    },
+    auditLog: {
+      create: async ({ data }: AnyRecord) => {
+        writes.txOrder.push('audit.create');
+        writes.audits.push(data);
+        return data;
+      },
+    },
+  };
 
   stubMethod(t, prisma.user, 'findUnique', async () => coordinator);
   stubMethod(t, prisma.course, 'findUnique', async () => course);
   stubMethod(t, prisma.examSchedule, 'findUnique', async () => currentSchedule);
+  stubMethod(t, prisma.examSchedule, 'findFirst', async () => null);
   stubMethod(t, prisma.examSchedule, 'create', async () => { writes.creates += 1; return {}; });
-  stubMethod(t, prisma, '$transaction', async () => { writes.transactions += 1; return {}; });
+  stubMethod(t, prisma.auditLog, 'create', async ({ data }: AnyRecord) => { writes.middlewareAudits.push(data); return {}; });
+  stubMethod(t, prisma, '$transaction', async (operation: any) => {
+    writes.transactions += 1;
+    return typeof operation === 'function' ? operation(tx) : {};
+  });
 
   const app = express();
   app.use(express.json());
+  app.use('/api', auditMiddleware);
   app.use('/api/schedules', scheduleRoutes);
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -124,4 +158,46 @@ test('Edit schedule rejects an invalid deadline before writing', async (t) => {
 
   assert.equal(response.status, 400);
   assert.equal(state.writes.transactions, 0);
+});
+
+test('Schedule edits atomically audit actual before/after values using the authenticated actor', async (t) => {
+  const state = await setup(t);
+  const response = await send(state.server, 'PUT', '/api/schedules/74', {
+    room: 'L2',
+    actor_id: 999,
+    actor_name: 'Spoofed User',
+    actor_role: 'ADMIN',
+  }, state.token);
+
+  assert.equal(response.status, 200);
+  assert.equal(state.writes.audits.length, 1);
+  assert.deepEqual(state.writes.audits[0], {
+    userId: 31,
+    userName: 'QA Coordinator',
+    userRole: 'COORDINATOR',
+    action: 'UPDATE_SCHEDULE',
+    entityType: 'SCHEDULE',
+    entityId: '74',
+    ipAddress: '127.0.0.1',
+    detailJson: JSON.stringify({
+      audit_version: 1,
+      updated_fields: { exam_date: undefined, room: 'L2', status: undefined },
+      related_exam_ids: [901],
+      related_entity_type: 'SCHEDULE',
+      related_entity_id: 74,
+      changes: { room: { before: 'QA-ROOM', after: 'L2' } },
+    }),
+  });
+  assert.deepEqual(state.writes.txOrder, ['schedule.update', 'audit.create']);
+  assert.equal(state.writes.middlewareAudits.length, 0);
+});
+
+test('No-op schedule update does not create an edit audit entry', async (t) => {
+  const state = await setup(t);
+  const response = await send(state.server, 'PUT', '/api/schedules/74', {}, state.token);
+
+  assert.equal(response.status, 200);
+  assert.equal(state.writes.transactions, 1);
+  assert.equal(state.writes.audits.length, 0);
+  assert.equal(state.writes.middlewareAudits.length, 0);
 });

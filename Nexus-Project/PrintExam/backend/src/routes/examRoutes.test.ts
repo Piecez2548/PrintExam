@@ -1,5 +1,41 @@
 import assert from 'node:assert/strict';
+import { createServer, request as httpRequest, type Server } from 'node:http';
+import express from 'express';
+import jwt from 'jsonwebtoken';
 import test from 'node:test';
+
+process.env.JWT_SECRET ||= 'test-only-secret-that-is-long-enough-for-local-tests';
+
+type AnyRecord = Record<string, any>;
+
+function stubMethod(target: AnyRecord, methodName: string, implementation: (...args: any[]) => any): () => void {
+  const original = target[methodName];
+  Object.defineProperty(target, methodName, { configurable: true, writable: true, value: implementation });
+  return () => Object.defineProperty(target, methodName, { configurable: true, writable: true, value: original });
+}
+
+function getExam(server: Server, token: string): Promise<{ status: number; body: AnyRecord }> {
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({
+      hostname: '127.0.0.1',
+      port: address.port,
+      path: '/api/exams/41',
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('end', () => resolve({
+        status: response.statusCode || 0,
+        body: chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {},
+      }));
+    });
+    request.on('error', reject);
+    request.end();
+  });
+}
 
 process.env.JWT_SECRET ||= 'test-only-secret-that-is-long-enough-for-local-tests';
 
@@ -85,4 +121,135 @@ test('exam response exposes the authoritative course department for cover sheets
   assert.equal(formatted.exam_date, '2026-10-04');
   assert.equal(formatted.room, 'CB-2301');
   assert.equal(formatted.section, '01');
+});
+
+test('audit change payload records one and multiple effective fields and suppresses no-op values', async () => {
+  const { buildAuditChanges } = await import('../data/auditTrail');
+  const changes = buildAuditChanges(
+    { exam_date: '2026-10-19', room: 'L1', student_count: 40 },
+    { exam_date: '2026-10-20', room: 'L2', student_count: 40 },
+    ['exam_date', 'room', 'student_count']
+  );
+
+  assert.deepEqual(changes, {
+    exam_date: { before: '2026-10-19', after: '2026-10-20' },
+    room: { before: 'L1', after: 'L2' },
+  });
+  assert.equal(Object.keys(buildAuditChanges({ room: 'L1' }, { room: 'L1' }, ['room'])).length, 0);
+});
+
+test('audit trail sorts newest first and breaks equal timestamps by descending event id', async () => {
+  const { sortAuditTrail } = await import('../data/auditTrail');
+  const sorted = sortAuditTrail([
+    { id: 5, event_type: 'STATUS_CHANGE', action_at: '2026-10-01T10:00:00.000Z' },
+    { id: 7, event_type: 'DATA_EDIT', action_at: '2026-10-01T11:00:00.000Z' },
+    { id: 6, event_type: 'STATUS_CHANGE', action_at: '2026-10-01T10:00:00.000Z' },
+  ]);
+
+  assert.deepEqual(sorted.map(({ id }) => id), [7, 6, 5]);
+});
+
+test('audit metadata redacts credential-like values and sensitive nested keys', async () => {
+  const { buildAuditChanges, parseAuditChanges } = await import('../data/auditTrail');
+  const changes = buildAuditChanges(
+    { special_instructions: 'password=old-value', token: 'old-token' },
+    { special_instructions: 'Bring a calculator', token: 'new-token' },
+    ['special_instructions', 'token']
+  );
+
+  assert.deepEqual(changes, {
+    special_instructions: { before: '[REDACTED]', after: 'Bring a calculator' },
+    token: { before: '[REDACTED]', after: '[REDACTED]' },
+  });
+  assert.doesNotMatch(JSON.stringify(changes), /old-value|old-token|new-token/);
+  assert.equal(parseAuditChanges(JSON.stringify({ changes: { room: { before: 'A', after: 'B' } } })), null);
+  assert.deepEqual(parseAuditChanges(JSON.stringify({ audit_version: 1, changes: { room: { before: 'A', after: 'B' }, password: { before: 'x', after: 'y' } } })), {
+    room: { before: 'A', after: 'B' },
+  });
+});
+
+test('exam detail refetch returns persisted audit events newest first with authenticated actors', async (t) => {
+  const [{ default: examRoutes }, { prisma }, { JWT_SECRET }, { UserRole, ExamStatus }] = await Promise.all([
+    import('./examRoutes'),
+    import('../database/prisma'),
+    import('../config/constants'),
+    import('../../generated/prisma'),
+  ]);
+  const instructor = {
+    id: 10,
+    username: 'qa-instructor',
+    fullName: 'QA Instructor',
+    email: 'qa-instructor@example.test',
+    role: UserRole.INSTRUCTOR,
+    department: 'QA',
+    phone: null,
+    officeRoom: null,
+    isActive: true,
+    mustChangePassword: false,
+    sessionVersion: 0,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  };
+  const exam = {
+    id: 41,
+    courseId: 52,
+    scheduleId: 74,
+    status: ExamStatus.DRAFT,
+    createdById: instructor.id,
+    createdBy: { fullName: instructor.fullName },
+    course: { instructorId: instructor.id, courseCode: 'QA-101', courseName: 'QA Course', instructor: { fullName: instructor.fullName } },
+    schedule: { id: 74, examDate: '2026-10-19', startTime: '09:00', endTime: '12:00', room: 'L2', examType: 'FINAL', coordinator: null },
+    deadlineAt: new Date('2026-10-17T16:59:59.999Z'),
+    createdAt: new Date('2026-10-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-10-01T00:00:00.000Z'),
+    statusHistory: [{
+      id: 3,
+      examId: 41,
+      fromStatus: null,
+      toStatus: ExamStatus.DRAFT,
+      actionById: instructor.id,
+      actionName: instructor.fullName,
+      actionAt: new Date('2026-10-01T00:00:00.000Z'),
+      note: 'Saved draft',
+      actionBy: { role: UserRole.INSTRUCTOR },
+    }],
+    printRecords: [],
+    packingRecords: [],
+    deliveryRecords: [],
+  };
+  const persistedEdit = {
+    id: 12,
+    userId: 31,
+    userName: 'QA Coordinator',
+    userRole: UserRole.COORDINATOR,
+    action: 'UPDATE_SCHEDULE',
+    entityType: 'SCHEDULE',
+    entityId: '74',
+    detailJson: JSON.stringify({ audit_version: 1, changes: { room: { before: 'L1', after: 'L2' } } }),
+    createdAt: new Date('2026-10-02T00:00:00.000Z'),
+  };
+  let auditReads = 0;
+  const restoreUser = stubMethod(prisma.user, 'findUnique', async () => instructor);
+  const restoreExam = stubMethod(prisma.exam, 'findUnique', async () => exam);
+  const restoreAudit = stubMethod(prisma.auditLog, 'findMany', async () => { auditReads += 1; return [persistedEdit]; });
+  t.after(restoreUser);
+  t.after(restoreExam);
+  t.after(restoreAudit);
+
+  const app = express();
+  app.use('/api/exams', examRoutes);
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const token = jwt.sign({ id: instructor.id, username: instructor.username, sessionVersion: 0 }, JWT_SECRET);
+
+  const first = await getExam(server, token);
+  const second = await getExam(server, token);
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  assert.equal(auditReads, 2);
+  assert.deepEqual(second.body.data.audit_trail.map((event: AnyRecord) => event.event_type), ['DATA_EDIT', 'STATUS_CHANGE']);
+  assert.equal(second.body.data.audit_trail[0].action_at, persistedEdit.createdAt.toISOString());
+  assert.equal(second.body.data.audit_trail[0].action_name, 'QA Coordinator');
+  assert.equal(second.body.data.audit_trail[0].action_role, UserRole.COORDINATOR);
+  assert.deepEqual(second.body.data.audit_trail[0].changes.room, { before: 'L1', after: 'L2' });
 });

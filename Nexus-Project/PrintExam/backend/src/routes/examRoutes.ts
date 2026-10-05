@@ -10,6 +10,7 @@ import { broadcastEvent } from '../services/wsService';
 import { createNotification, notifyRole } from '../services/notificationService';
 import { ExamStatus, UserRole, Prisma } from '../../generated/prisma';
 import { deleteStoredExamFile, persistExamUpload } from '../services/fileStorageService';
+import { buildAuditChanges, buildAuditValueChange, parseAuditChanges, sortAuditTrail } from '../data/auditTrail';
 
 const router = Router();
 
@@ -271,7 +272,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
         },
         createdBy: true,
         statusHistory: {
-          orderBy: { actionAt: 'asc' },
+          include: { actionBy: { select: { role: true } } },
+          orderBy: [{ actionAt: 'desc' }, { id: 'desc' }],
         },
         printRecords: {
           include: { printedBy: true },
@@ -302,6 +304,30 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
       return;
     }
 
+    const relatedAuditScopes = [
+      { entityType: 'EXAM', entityId: String(exam.id) },
+      ...(exam.scheduleId ? [{ entityType: 'SCHEDULE', entityId: String(exam.scheduleId) }] : []),
+      { entityType: 'COURSE', entityId: String(exam.courseId) },
+    ];
+    const dataEditLogs = await prisma.auditLog.findMany({
+      where: {
+        OR: relatedAuditScopes,
+        action: { in: ['UPDATE_EXAM', 'UPDATE_SCHEDULE', 'UPDATE_COURSE'] },
+      },
+      select: {
+        id: true,
+        userId: true,
+        userName: true,
+        userRole: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        detailJson: true,
+        createdAt: true,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+
     const editability = checkCanEditOrCancel(exam);
 
     const formattedHistory = exam.statusHistory.map((h) => ({
@@ -311,9 +337,32 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
       to_status: h.toStatus,
       action_by: h.actionById,
       action_name: h.actionName,
+      action_role: h.actionBy?.role,
       action_at: h.actionAt.toISOString(),
       note: h.note,
     }));
+
+    const dataEditHistory = dataEditLogs.flatMap((log) => {
+      const changes = parseAuditChanges(log.detailJson);
+      if (!changes) return [];
+      return [{
+        id: log.id,
+        event_type: 'DATA_EDIT' as const,
+        action: log.action,
+        entity_type: log.entityType,
+        entity_id: log.entityId,
+        exam_id: exam.id,
+        action_by: log.userId,
+        action_name: log.userName || 'System/Anonymous',
+        action_role: log.userRole || 'SYSTEM',
+        action_at: log.createdAt.toISOString(),
+        changes,
+      }];
+    });
+    const auditTrail = sortAuditTrail([
+      ...formattedHistory.map((entry) => ({ ...entry, event_type: 'STATUS_CHANGE' as const })),
+      ...dataEditHistory,
+    ]);
 
     const formattedPrintRecords = exam.printRecords.map(formatHistoricalPrintRecord);
 
@@ -343,6 +392,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response): P
       data: {
         ...formatExamForUser(exam, user.role),
         status_history: formattedHistory,
+        audit_trail: auditTrail,
         print_records: formattedPrintRecords,
         packing_records: formattedPackingRecords,
         delivery_records: formattedDeliveryRecords,
@@ -768,58 +818,119 @@ router.put('/:id', authenticateToken, uploadExamFile.single('file'), async (req:
       pendingStoredFileUrl = fileUrl;
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.exam.update({
+    const examUpdateData = {
+      courseId: course_id ? Number(course_id) : undefined,
+      scheduleId: schedule_id !== undefined ? (schedule_id ? Number(schedule_id) : null) : undefined,
+      deadlineAt: nextScheduleDeadline,
+      fileUrl,
+      originalFilename,
+      fileType,
+      fileSize,
+      numCopies: student_count !== undefined || reserve_copies !== undefined || legacyTotal !== undefined ? nextStudents + nextReserves : undefined,
+      studentCount: student_count !== undefined || legacyTotal !== undefined ? nextStudents : undefined,
+      reserveCopies: reserve_copies !== undefined ? nextReserves : undefined,
+      section: section !== undefined ? String(section).trim() || null : undefined,
+      numPages: num_pages !== undefined ? Number(num_pages) : undefined,
+      examLanguage: exam_language !== undefined ? exam_language : undefined,
+      printFormat: print_format !== undefined ? print_format : undefined,
+      allowedMaterials: allowed_materials !== undefined ? allowed_materials || null : undefined,
+      requiresAnswerSheet: requires_answer_sheet !== undefined ? requires_answer_sheet === 'true' || requires_answer_sheet === true : undefined,
+      examSessionType: exam_session_type !== undefined ? exam_session_type : undefined,
+      specialInstructions: special_instructions !== undefined ? special_instructions : undefined,
+      isDoubleSided:
+        is_double_sided !== undefined
+          ? is_double_sided === 'false' || is_double_sided === 0 || is_double_sided === false
+            ? false
+            : true
+          : undefined,
+      paperSize: paper_size !== undefined ? paper_size : undefined,
+      status: newStatus,
+      submittedAt: newStatus === ExamStatus.SUBMITTED && !exam.submittedAt ? new Date() : undefined,
+    };
+    const transactionResult = await prisma.$transaction(async (tx) => {
+      const transactionCurrent = await tx.exam.findUnique({ where: { id: examId } });
+      if (!transactionCurrent) throw new Error('Exam not found');
+      const saved = await tx.exam.update({
         where: { id: examId },
-        data: {
-        courseId: course_id ? Number(course_id) : undefined,
-        scheduleId: schedule_id !== undefined ? (schedule_id ? Number(schedule_id) : null) : undefined,
-        deadlineAt: nextScheduleDeadline,
-        fileUrl,
-        originalFilename,
-        fileType,
-        fileSize,
-        numCopies: student_count !== undefined || reserve_copies !== undefined || legacyTotal !== undefined ? nextStudents + nextReserves : undefined,
-        studentCount: student_count !== undefined || legacyTotal !== undefined ? nextStudents : undefined,
-        reserveCopies: reserve_copies !== undefined ? nextReserves : undefined,
-        section: section !== undefined ? String(section).trim() || null : undefined,
-        numPages: num_pages !== undefined ? Number(num_pages) : undefined,
-        examLanguage: exam_language !== undefined ? exam_language : undefined,
-        printFormat: print_format !== undefined ? print_format : undefined,
-        allowedMaterials: allowed_materials !== undefined ? allowed_materials || null : undefined,
-        requiresAnswerSheet: requires_answer_sheet !== undefined ? requires_answer_sheet === 'true' || requires_answer_sheet === true : undefined,
-        examSessionType: exam_session_type !== undefined ? exam_session_type : undefined,
-        specialInstructions: special_instructions !== undefined ? special_instructions : undefined,
-        isDoubleSided:
-          is_double_sided !== undefined
-            ? is_double_sided === 'false' || is_double_sided === 0 || is_double_sided === false
-              ? false
-              : true
-            : undefined,
-        paperSize: paper_size !== undefined ? paper_size : undefined,
-        status: newStatus,
-        submittedAt: newStatus === ExamStatus.SUBMITTED && !exam.submittedAt ? new Date() : undefined,
-        },
+        data: examUpdateData,
       });
-      if (newStatus !== exam.status) {
+      const toAuditValues = (value: typeof transactionCurrent): Record<string, unknown> => ({
+        course_id: value.courseId,
+        schedule_id: value.scheduleId,
+        deadline_at: value.deadlineAt,
+        original_filename: value.originalFilename,
+        file_type: value.fileType,
+        file_size: value.fileSize,
+        num_copies: value.numCopies,
+        student_count: value.studentCount,
+        reserve_copies: value.reserveCopies,
+        section: value.section,
+        num_pages: value.numPages,
+        exam_language: value.examLanguage,
+        print_format: value.printFormat,
+        allowed_materials: value.allowedMaterials,
+        requires_answer_sheet: value.requiresAnswerSheet,
+        exam_session_type: value.examSessionType,
+        special_instructions: value.specialInstructions,
+        is_double_sided: value.isDoubleSided,
+        paper_size: value.paperSize,
+      });
+      const examAuditBefore = toAuditValues(transactionCurrent);
+      const examAuditAfter = toAuditValues(saved);
+      const examChanges = buildAuditChanges(examAuditBefore, examAuditAfter, Object.keys(examAuditBefore));
+      if (req.file) {
+        examChanges.file = buildAuditValueChange(
+          { name: transactionCurrent.originalFilename, type: transactionCurrent.fileType, size: transactionCurrent.fileSize },
+          { name: saved.originalFilename, type: saved.fileType, size: saved.fileSize }
+        );
+      }
+      const statusChanged = saved.status !== transactionCurrent.status;
+      if (statusChanged) {
         await tx.examStatusHistory.create({
           data: {
             examId,
-            fromStatus: exam.status,
-            toStatus: newStatus,
+            fromStatus: transactionCurrent.status,
+            toStatus: saved.status,
             actionById: user.id,
             actionName: user.full_name,
             note: 'แก้ไขข้อมูลและส่งข้อสอบใหม่',
           },
         });
       }
+      if (Object.keys(examChanges).length > 0 || statusChanged) {
+        await tx.auditLog.create({
+          data: {
+            userId: user.id,
+            userName: user.full_name,
+            userRole: user.role,
+            action: 'UPDATE_EXAM',
+            entityType: 'EXAM',
+            entityId: String(examId),
+            ipAddress: req.ip || '127.0.0.1',
+            detailJson: JSON.stringify({
+              audit_version: 1,
+              updated_fields: { num_copies, filename: originalFilename, newStatus },
+              related_exam_id: examId,
+              related_entity_type: 'EXAM',
+              related_entity_id: examId,
+              changes: examChanges,
+            }),
+          },
+        });
+      }
+      return {
+        statusChanged,
+        fromStatus: transactionCurrent.status,
+        toStatus: saved.status,
+      };
     });
     uploadPersisted = true;
     pendingStoredFileUrl = null;
+    req.auditHandledAtomically = true;
 
     if (req.file && exam.fileUrl && exam.fileUrl !== fileUrl) await deleteStoredExamFile(exam.fileUrl);
 
-    if (newStatus !== exam.status) {
+    if (transactionResult.statusChanged) {
       await notifyRole(
         UserRole.AV_STAFF,
         'EXAM_RESUBMITTED',
@@ -828,12 +939,8 @@ router.put('/:id', authenticateToken, uploadExamFile.single('file'), async (req:
         `/av-staff/exams/${examId}/review`
       );
 
-      broadcastEvent('EXAM_STATUS_CHANGED', { examId, fromStatus: exam.status, toStatus: newStatus });
+      broadcastEvent('EXAM_STATUS_CHANGED', { examId, fromStatus: transactionResult.fromStatus, toStatus: transactionResult.toStatus });
     }
-
-    await recordAuditLog(user.id, user.full_name, user.role, 'UPDATE_EXAM', 'EXAM', id, req.ip || '127.0.0.1', {
-      updated_fields: { num_copies, filename: originalFilename, newStatus },
-    });
 
     res.json({ success: true, message: 'แก้ไขข้อมูลข้อสอบเรียบร้อยแล้ว' });
   } catch (error) {

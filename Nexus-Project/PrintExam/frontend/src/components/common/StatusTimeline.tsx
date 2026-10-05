@@ -1,12 +1,12 @@
 import React from 'react';
-import { ExamStatus, ExamStatusHistory } from '../../types';
+import { ExamStatus, ExamAuditTrailItem, ExamStatusHistory } from '../../types';
 import { CheckCircle2, Clock, XCircle, ChevronRight, User, Calendar } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 
 interface StatusTimelineProps {
   currentStatus: ExamStatus;
-  history?: ExamStatusHistory[];
+  history?: Array<ExamAuditTrailItem | ExamStatusHistory>;
 }
 
 const STEPS = [
@@ -20,6 +20,24 @@ const STEPS = [
 
 export const StatusTimeline: React.FC<StatusTimelineProps> = ({ currentStatus, history = [] }) => {
   const { t } = useTranslation("common");
+
+  const formatAuditValue = (value: unknown): string => {
+    if (value === null || value === undefined || value === '') return t('audit.valueNotSet');
+    if (typeof value === 'boolean') return value ? t('audit.enabled') : t('audit.disabled');
+    if (typeof value === 'object') {
+      const file = value as { name?: unknown; type?: unknown; size?: unknown };
+      if ('name' in file || 'type' in file || 'size' in file) {
+        const name = file.name ? String(file.name) : t('audit.valueNotSet');
+        const details = [file.type, file.size !== null && file.size !== undefined ? `${file.size} bytes` : null]
+          .filter(Boolean)
+          .map(String)
+          .join(', ');
+        return details ? `${name} (${details})` : name;
+      }
+      return JSON.stringify(value);
+    }
+    return String(value);
+  };
 
   const getStepIndex = (status: ExamStatus): number => {
     switch (status) {
@@ -102,25 +120,45 @@ export const StatusTimeline: React.FC<StatusTimelineProps> = ({ currentStatus, h
             {t("ประวัติการเปลี่ยนสถานะและผู้ดำเนินการ (Audit Trail)")}
           </h4>
           <div className="space-y-3">
-            {history.map((h, i) => (
-              <div key={i} className="flex items-start gap-3 text-xs">
+            {history.map((h) => {
+              const isDataEdit = 'event_type' in h && h.event_type === 'DATA_EDIT';
+              const actionTitle = isDataEdit
+                ? h.entity_type === 'SCHEDULE'
+                  ? t('audit.scheduleUpdated')
+                  : h.entity_type === 'COURSE'
+                    ? t('audit.courseUpdated')
+                    : t('audit.examUpdated')
+                : t(`status.${h.to_status}`, { ns: 'statuses', defaultValue: h.to_status });
+              return (
+              <div key={`${'event_type' in h ? h.event_type : 'STATUS_CHANGE'}-${h.id}`} className="flex items-start gap-3 text-xs">
                 <div className="w-2 h-2 rounded-full bg-brand-500 mt-1.5 shrink-0" />
                 <div className="flex-1 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-200/70 dark:border-slate-800">
-                  <div className="flex items-center justify-between font-medium text-slate-700 dark:text-slate-200">
-                  <span className="font-semibold text-brand-600 dark:text-brand-400">{t(`status.${h.to_status}`, { ns: 'statuses', defaultValue: h.to_status })}</span>
-                    <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1 font-medium text-slate-700 dark:text-slate-200">
+                    <span className="font-semibold text-brand-600 dark:text-brand-400">{actionTitle}</span>
+                    <span className="text-[11px] text-slate-400 flex items-center gap-1 sm:shrink-0">
                       <Calendar className="w-3 h-3" />
                       {new Date(h.action_at).toLocaleString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH')}
                     </span>
                   </div>
-                  {h.note && <div className="text-slate-600 dark:text-slate-300 mt-1">{h.note}</div>}
+                  {isDataEdit && 'changes' in h && h.changes && (
+                    <div className="mt-2 space-y-1.5 text-slate-600 dark:text-slate-300">
+                      {Object.entries(h.changes).map(([field, change]) => (
+                        <div key={field} className="break-words">
+                          <span className="font-semibold">{t(`audit.fields.${field}`, { defaultValue: field })}: </span>
+                          <span>{formatAuditValue(change.before)} → {formatAuditValue(change.after)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!isDataEdit && h.note && <div className="text-slate-600 dark:text-slate-300 mt-1">{h.note}</div>}
                   <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
                     <User className="w-3 h-3" />
-                    <span>{t("ผู้ดำเนินการ:")} {h.action_name}</span>
+                    <span>{t("ผู้ดำเนินการ:")} {h.action_name}{h.action_role ? ` (${t(`roles.${h.action_role}`, { defaultValue: h.action_role })})` : ''}</span>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
