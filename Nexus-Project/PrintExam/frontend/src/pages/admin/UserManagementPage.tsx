@@ -148,12 +148,16 @@ export const UserManagementPage: React.FC = () => {
     setIsDeleting(true);
     try {
       const res = await usersApi.deleteUser(userToDelete.id);
-      toast.success(t('Account deactivated.'));
+      toast.success(t('Account deleted permanently.'));
       setIsDeleteModalOpen(false);
       setUserToDelete(null);
       fetchUsers();
     } catch (err: any) {
-      toast.error(t("ไม่สามารถปิดใช้งานบัญชีได้"), localizedApiError(err, t('An unexpected error occurred.')));
+      if (err?.response?.data?.code === 'USER_HAS_RETAINED_HISTORY') {
+        toast.error(t('ไม่สามารถลบบัญชีนี้ได้ เนื่องจากมีประวัติการใช้งานหรือข้อมูลในกระบวนการสอบที่ต้องเก็บรักษา'));
+      } else {
+        toast.error(t("ไม่สามารถลบบัญชีได้"), localizedApiError(err, t('An unexpected error occurred.')));
+      }
     } finally {
       setIsDeleting(false);
     }
@@ -281,7 +285,7 @@ export const UserManagementPage: React.FC = () => {
             <option value="">{t("ทุกบทบาท (All Roles)")}</option>
             <option value={UserRole.INSTRUCTOR}>{t("อาจารย์ผู้สอน")}</option>
             <option value={UserRole.AV_STAFF}>{t("เจ้าหน้าที่หน่วยโสต")}</option>
-            <option value={UserRole.COORDINATOR}>{t("จนท.ดำเนินการสอบ")}</option>
+            <option value={UserRole.COORDINATOR}>{t("เจ้าหน้าที่ดำเนินการสอบ")}</option>
             <option value={UserRole.ADMIN}>{t("ผู้ดูแลระบบ")}</option>
           </select>
 
@@ -401,7 +405,7 @@ export const UserManagementPage: React.FC = () => {
                           }}
                           className="inline-flex min-h-9 w-full items-center justify-center whitespace-nowrap rounded-lg bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
                         >
-                          {t("ปิดบัญชี")}
+                          {t("ลบบัญชี")}
                         </button>
                       </div>
                     </td>
@@ -513,7 +517,7 @@ export const UserManagementPage: React.FC = () => {
               >
                 <option value={UserRole.INSTRUCTOR}>{t("อาจารย์ผู้สอน (Instructor)")}</option>
                 <option value={UserRole.AV_STAFF}>{t("เจ้าหน้าที่หน่วยโสต (AV Staff)")}</option>
-                <option value={UserRole.COORDINATOR}>{t("จนท.ดำเนินการสอบ (Coordinator)")}</option>
+                <option value={UserRole.COORDINATOR}>{t("เจ้าหน้าที่ดำเนินการสอบ (Coordinator)")}</option>
                 <option value={UserRole.ADMIN}>{t("ผู้ดูแลระบบ (Admin)")}</option>
               </select>
             </div>
@@ -622,7 +626,7 @@ export const UserManagementPage: React.FC = () => {
       <Modal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
-        title={t("ยืนยันการปิดใช้งานบัญชี")}
+        title={t("ลบบัญชีถาวร")}
         maxWidth="md"
       >
         {userToDelete && (
@@ -630,15 +634,15 @@ export const UserManagementPage: React.FC = () => {
             <div className="bg-rose-50 dark:bg-rose-950/40 p-4 rounded-2xl border border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200">
               <div className="font-bold text-sm">
 
-                {t("คุณต้องการปิดใช้งานบัญชี \"")}{userToDelete.full_name}" ({userToDelete.username}{t(") หรือไม่?")}
+                {userToDelete.full_name} ({userToDelete.username})
               </div>
               <div className="mt-1 text-xs text-rose-800 dark:text-rose-300">
 
-                {t("อีเมล:")} {userToDelete.email}  {t("| บทบาท:")} {t(`role.${userToDelete.role}`, { ns: 'statuses', defaultValue: userToDelete.role })}  {t("| สังกัด:")} {userToDelete.department || '-'}
+                {t("บทบาท:")} {t(`role.${userToDelete.role}`, { ns: 'statuses', defaultValue: userToDelete.role })}
               </div>
               <p className="mt-2 text-[11px] text-rose-700 dark:text-rose-400">
 
-                {t("การดำเนินการนี้จะปิดใช้งานบัญชีและยกเลิก session ปัจจุบัน โดยยังเก็บรายวิชา ข้อสอบ และ Audit Log ไว้เป็นหลักฐาน")}
+                {t("การลบบัญชีนี้เป็นการลบถาวรและไม่สามารถย้อนกลับได้")}
               </p>
             </div>
 
@@ -658,7 +662,7 @@ export const UserManagementPage: React.FC = () => {
                 className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition-colors shadow-sm disabled:opacity-50"
               >
                 <Trash2 className="w-4 h-4" />
-                {isDeleting ? t("กำลังปิดบัญชี...") : t("ยืนยันปิดใช้งาน")}
+                {isDeleting ? t("กำลังลบบัญชี...") : t("ยืนยันลบบัญชี")}
               </button>
             </div>
           </div>

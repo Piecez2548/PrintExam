@@ -11,7 +11,7 @@
   "status.CANCELLED": "ยกเลิกรายการแล้ว",
   "role.INSTRUCTOR": "อาจารย์ผู้สอน (Instructor)",
   "role.AV_STAFF": "เจ้าหน้าที่หน่วยโสต (AV Staff)",
-  "role.COORDINATOR": "จนท.ดำเนินการสอบ (Coordinator)",
+  "role.COORDINATOR": "เจ้าหน้าที่ดำเนินการสอบ (Coordinator)",
   "role.ADMIN": "ผู้ดูแลระบบ (Admin)",
   "entity.EXAM": "ข้อสอบ",
   "entity.USER": "ผู้ใช้งาน",

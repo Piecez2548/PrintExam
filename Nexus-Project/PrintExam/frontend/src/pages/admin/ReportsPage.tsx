@@ -75,7 +75,7 @@ export const ReportsPage: React.FC = () => {
       return `"${text.replace(/"/g, '""')}"`;
     };
 
-    const headers = ['รหัสวิชา', 'ชื่อวิชา', 'อาจารย์ผู้สอน', 'วันสอบ', 'เวลาสอบ', 'ห้องสอบ', 'จำนวนพิมพ์', 'สถานะ', 'จนท.ดำเนินการสอบ'].map((header) => t(header));
+    const headers = ['รหัสวิชา', 'ชื่อวิชา', 'อาจารย์ผู้สอน', 'วันสอบ', 'เวลาสอบ', 'ห้องสอบ', 'จำนวนพิมพ์', 'สถานะ', 'เจ้าหน้าที่ดำเนินการสอบ'].map((header) => t(header));
     const rows = data.exams.map((e) => [
       csvCell(e.course_code),
       csvCell(e.course_name),
@@ -363,7 +363,7 @@ export const ReportsPage: React.FC = () => {
                 <th className="py-3.5 px-4">{t("ห้องสอบ")}</th>
                 <th className="py-3.5 px-4">{t("จำนวนพิมพ์")}</th>
                 <th className="py-3.5 px-4">{t("สถานะข้อสอบ")}</th>
-                <th className="py-3.5 px-4">{t("จนท.ดำเนินการสอบ")}</th>
+                <th className="py-3.5 px-4">{t("เจ้าหน้าที่ดำเนินการสอบ")}</th>
                 <th className="py-3.5 px-4 text-right">{t("ใบปะหน้า")}</th>
               </tr>
             </thead>

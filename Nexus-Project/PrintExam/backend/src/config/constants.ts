@@ -18,7 +18,7 @@ export const STATUS_LABELS_TH: Record<ExamStatus, string> = {
 export const ROLE_LABELS_TH: Record<UserRole, string> = {
   [UserRole.INSTRUCTOR]: 'อาจารย์ผู้สอน (Instructor)',
   [UserRole.AV_STAFF]: 'เจ้าหน้าที่หน่วยโสต (AV Staff)',
-  [UserRole.COORDINATOR]: 'จนท.ดำเนินการสอบ (Coordinator)',
+  [UserRole.COORDINATOR]: 'เจ้าหน้าที่ดำเนินการสอบ (Coordinator)',
   [UserRole.ADMIN]: 'ผู้ดูแลระบบ (Admin)',
 };
 
