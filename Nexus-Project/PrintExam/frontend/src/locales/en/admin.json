@@ -112,8 +112,8 @@
   "เปิดใช้งาน": "enabled",
   "ระงับการใช้งาน": "Suspended",
   "แก้ไข": "edit",
-  "รีเซ็ตรหัส": "reset code",
-  "ระงับ": "suspension",
+  "รีเซ็ตรหัส": "Reset password",
+  "ระงับ": "Suspend",
   "ปิดบัญชี": "Close account",
   "แก้ไขข้อมูลผู้ใช้งาน": "edit user information",
   "ชื่อผู้ใช้ (Username) *": "Username (Username) *",
@@ -164,12 +164,6 @@
   "ชื่อวิชา": "Course Name",
   "วันสอบ": "Exam Date",
   "เวลาสอบ": "Exam Time",
-  "userActions": {
-    "manage": "Manage",
-    "edit": "Edit user",
-    "resetPassword": "Reset password",
-    "suspend": "Suspend user",
-    "activate": "Activate user",
-    "closeAccount": "Close account"
-  }
+  "แก้ไขผู้ใช้": "Edit",
+  "เปิดใช้งานผู้ใช้": "Activate user"
 }

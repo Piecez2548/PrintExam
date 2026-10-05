@@ -3,7 +3,6 @@ import { PasswordResetRequestItem, usersApi } from '../../api/users';
 import { User, UserRole } from '../../types';
 import { RoleBadge } from '../../components/common/RoleBadge';
 import { Modal } from '../../components/common/Modal';
-import { UserActionsMenu, type UserAction } from '../../components/common/UserActionsMenu';
 import { useToast } from '../../context/ToastContext';
 import {
   Users,
@@ -28,7 +27,6 @@ export const UserManagementPage: React.FC = () => {
 
   const toast = useToast();
   const [users, setUsers] = useState<User[]>([]);
-  const [openActionsUserId, setOpenActionsUserId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
@@ -358,13 +356,11 @@ export const UserManagementPage: React.FC = () => {
                         </span>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                      <UserActionsMenu
-                        isOpen={openActionsUserId === u.id}
-                        isActive={u.is_active}
-                        onOpenChange={(open) => setOpenActionsUserId(open ? u.id : null)}
-                        onSelect={(action: UserAction) => {
-                          if (action === 'edit') {
+                    <td className="py-3.5 px-4 align-middle">
+                      <div className="ml-auto grid w-60 grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
                             setEditingUserId(u.id);
                             setUsername(u.username);
                             setFullName(u.full_name);
@@ -373,16 +369,41 @@ export const UserManagementPage: React.FC = () => {
                             setDepartment(u.department || '');
                             setPhone(u.phone || '');
                             setIsModalOpen(true);
-                          } else if (action === 'resetPassword') {
-                            openResetPasswordModal(u);
-                          } else if (action === 'toggleStatus') {
-                            handleToggleSuspend(u);
-                          } else {
+                          }}
+                          className="inline-flex min-h-9 w-full items-center justify-center whitespace-nowrap rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                        >
+                          {t("แก้ไขผู้ใช้")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openResetPasswordModal(u)}
+                          className="inline-flex min-h-9 w-full items-center justify-center gap-1 whitespace-nowrap rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:hover:bg-blue-950"
+                        >
+                          <KeyRound className="h-3.5 w-3.5 shrink-0" />
+                          {t("รีเซ็ตรหัส")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSuspend(u)}
+                          className={`inline-flex min-h-9 w-full items-center justify-center whitespace-nowrap rounded-lg px-2 py-1 text-[11px] font-medium ${
+                            u.is_active
+                              ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/70'
+                              : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-200 dark:hover:bg-emerald-950/70'
+                          }`}
+                        >
+                          {u.is_active ? t("ระงับ") : t("เปิดใช้งานผู้ใช้")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
                             setUserToDelete(u);
                             setIsDeleteModalOpen(true);
-                          }
-                        }}
-                      />
+                          }}
+                          className="inline-flex min-h-9 w-full items-center justify-center whitespace-nowrap rounded-lg bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
+                        >
+                          {t("ปิดบัญชี")}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
