@@ -3,11 +3,30 @@ import i18n from '../i18n';
 interface ApiErrorShape {
   response?: {
     status?: number;
-    data?: { code?: unknown; message?: unknown };
+    data?: { code?: unknown; conflicts?: unknown; message?: unknown };
   };
 }
 
+export type UserConflictField = 'username' | 'email';
+export type UserConflictFieldErrors = Record<UserConflictField, boolean>;
+
+export function getUserConflictFields(error: unknown): UserConflictField[] {
+  const apiError = error as ApiErrorShape;
+  if (apiError?.response?.data?.code !== 'USER_CONFLICT') return [];
+  const conflicts = apiError.response.data.conflicts;
+  if (!Array.isArray(conflicts)) return [];
+  return ['username', 'email'].filter((field): field is UserConflictField => conflicts.includes(field));
+}
+
+export function clearUserConflictFieldError(
+  current: UserConflictFieldErrors,
+  field: UserConflictField,
+): UserConflictFieldErrors {
+  return { ...current, [field]: false };
+}
+
 const knownBackendMessages: Record<string, string> = {
+  'ชื่อผู้ใช้หรืออีเมลนี้มีอยู่ในระบบแล้ว': 'The username or email is already in use.',
   'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง': 'The username or password is incorrect.',
   'บัญชีผู้ใช้นี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ': 'Your account is suspended. Contact an administrator.',
   'บัญชีผู้ใช้นี้ถูกระงับการใช้งาน': 'Your account is suspended. Contact an administrator.',
@@ -22,6 +41,17 @@ const knownBackendMessages: Record<string, string> = {
 export function localizedApiError(error: unknown, fallback: string): string {
   const apiError = error as ApiErrorShape;
   const code = apiError?.response?.data?.code;
+  if (code === 'USER_CONFLICT') {
+    const conflicts = getUserConflictFields(error);
+    const messageKey = conflicts.length === 2
+      ? 'This username and email are already in use. Please change both.'
+      : conflicts[0] === 'username'
+        ? 'This username is already in use. Please choose another username.'
+        : conflicts[0] === 'email'
+          ? 'This email is already in use. Please use another email.'
+          : 'The username or email is already in use.';
+    return i18n.t(messageKey, { ns: 'common' });
+  }
   if (code === 'INVALID_PSU_ORGANIZATION') {
     return i18n.t('Select a valid PSU Hat Yai organization.', { ns: 'common' });
   }

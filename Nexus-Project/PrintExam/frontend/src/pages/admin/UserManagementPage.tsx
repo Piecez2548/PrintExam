@@ -19,7 +19,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { localizedApiError } from '../../api/localizedError';
+import { clearUserConflictFieldError, getUserConflictFields, localizedApiError } from '../../api/localizedError';
 import i18n from '../../i18n';
 import { formatPhoneInput, isCompletePhone, USERNAME_PATTERN } from '../../utils/userManagementInput';
 import {
@@ -54,6 +54,7 @@ export const UserManagementPage: React.FC = () => {
   const [originalPhone, setOriginalPhone] = useState('');
   const [showDefaultPassword, setShowDefaultPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [duplicateFieldErrors, setDuplicateFieldErrors] = useState({ username: false, email: false });
 
   // Delete Confirmation Modal State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -103,6 +104,7 @@ export const UserManagementPage: React.FC = () => {
     setOriginalPhone('');
     setShowDefaultPassword(false);
     setEditingUserId(null);
+    setDuplicateFieldErrors({ username: false, email: false });
   };
 
   const handleSaveUser = async (e: React.FormEvent) => {
@@ -148,6 +150,13 @@ export const UserManagementPage: React.FC = () => {
       resetForm();
       fetchUsers();
     } catch (err: any) {
+      const conflictingFields = getUserConflictFields(err);
+      if (conflictingFields.length > 0) {
+        setDuplicateFieldErrors({
+          username: conflictingFields.includes('username'),
+          email: conflictingFields.includes('email'),
+        });
+      }
       toast.error(t("ไม่สามารถบันทึกได้"), localizedApiError(err, t('An unexpected error occurred.')));
     } finally {
       setIsSubmitting(false);
@@ -390,6 +399,7 @@ export const UserManagementPage: React.FC = () => {
                             setDepartment(u.department || '');
                             setPhone(u.phone || '');
                             setOriginalPhone(u.phone || '');
+                            setDuplicateFieldErrors({ username: false, email: false });
                             setIsModalOpen(true);
                           }}
                           className="inline-flex h-7 shrink-0 items-center justify-center whitespace-nowrap rounded-md bg-slate-100 px-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
@@ -445,19 +455,30 @@ export const UserManagementPage: React.FC = () => {
           {!editingUserId && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="create-user-username" className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
 
                   {t("ชื่อผู้ใช้ (Username) *")}
                 </label>
                 <input
+                  id="create-user-username"
                   type="text"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={(e) => {
+                    setUsername(e.target.value);
+                    setDuplicateFieldErrors((current) => clearUserConflictFieldError(current, 'username'));
+                  }}
+                  aria-invalid={duplicateFieldErrors.username}
+                  aria-describedby={duplicateFieldErrors.username ? 'create-user-username-error' : undefined}
                   required
                   maxLength={64}
                   placeholder={t("เช่น somchai.j")}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
+                  className={`w-full bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 py-2 text-xs ${duplicateFieldErrors.username ? 'border-rose-500 focus-visible:ring-2 focus-visible:ring-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
                 />
+                {duplicateFieldErrors.username && (
+                  <p id="create-user-username-error" role="alert" className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
+                    {t('This username is already in use. Please choose another username.')}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -506,18 +527,29 @@ export const UserManagementPage: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="create-user-email" className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
 
                 {t("อีเมล (Email) *")}
               </label>
               <input
+                id="create-user-email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setDuplicateFieldErrors((current) => clearUserConflictFieldError(current, 'email'));
+                }}
+                aria-invalid={duplicateFieldErrors.email}
+                aria-describedby={duplicateFieldErrors.email ? 'create-user-email-error' : undefined}
                 required
                 placeholder="somchai@university.ac.th"
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
+                className={`w-full bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 py-2 text-xs ${duplicateFieldErrors.email ? 'border-rose-500 focus-visible:ring-2 focus-visible:ring-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
               />
+              {duplicateFieldErrors.email && (
+                <p id="create-user-email-error" role="alert" className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
+                  {t('This email is already in use. Please use another email.')}
+                </p>
+              )}
             </div>
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">

@@ -11,6 +11,44 @@ import { isCanonicalPsuHatYaiOrganization } from '../data/psuHatYaiOrganizations
 
 const router = Router();
 const USERNAME_PATTERN = /^[A-Za-z0-9._-]{3,64}$/;
+type UserConflictField = 'username' | 'email';
+
+async function findUserConflictFields(username: string, email: string): Promise<UserConflictField[]> {
+  const [usernameMatch, emailMatch] = await Promise.all([
+    prisma.user.findFirst({
+      where: { username: { equals: username, mode: 'insensitive' } },
+      select: { id: true },
+    }),
+    prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+      select: { id: true },
+    }),
+  ]);
+
+  return [
+    ...(usernameMatch ? ['username' as const] : []),
+    ...(emailMatch ? ['email' as const] : []),
+  ];
+}
+
+function getUniqueConstraintConflictFields(error: unknown): UserConflictField[] {
+  const target = (error as { meta?: { target?: unknown } } | null)?.meta?.target;
+  const targetText = Array.isArray(target) ? target.join(' ') : typeof target === 'string' ? target : '';
+  const normalizedTarget = targetText.toLowerCase();
+  return [
+    ...(normalizedTarget.includes('username') ? ['username' as const] : []),
+    ...(normalizedTarget.includes('email') ? ['email' as const] : []),
+  ];
+}
+
+function respondWithUserConflict(res: Response, conflicts: UserConflictField[]): void {
+  res.status(409).json({
+    success: false,
+    code: 'USER_CONFLICT',
+    conflicts,
+    message: 'ชื่อผู้ใช้หรืออีเมลนี้มีอยู่ในระบบแล้ว',
+  });
+}
 
 function normalizePhoneNumber(value: unknown): { valid: boolean; phone: string | null } {
   if (value === undefined || value === null || String(value).trim() === '') {
@@ -174,17 +212,11 @@ router.post('/', authenticateToken, requireRole(UserRole.ADMIN), async (req: Aut
   }
 
   try {
-    const existing = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { username: { equals: String(username).trim(), mode: 'insensitive' } },
-          { email: { equals: String(email).trim(), mode: 'insensitive' } },
-        ],
-      },
-    });
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const conflicts = await findUserConflictFields(normalizedUsername, normalizedEmail);
 
-    if (existing) {
-      res.status(409).json({ success: false, message: 'ชื่อผู้ใช้หรืออีเมลนี้มีอยู่ในระบบแล้ว' });
+    if (conflicts.length > 0) {
+      respondWithUserConflict(res, conflicts);
       return;
     }
 
@@ -194,7 +226,7 @@ router.post('/', authenticateToken, requireRole(UserRole.ADMIN), async (req: Aut
         username: normalizedUsername,
         passwordHash,
         fullName: String(full_name).trim(),
-        email: String(email).trim().toLowerCase(),
+        email: normalizedEmail,
         role: role as UserRole,
         department: normalizedDepartment || null,
         phone: normalizedPhone.phone,
@@ -220,6 +252,17 @@ router.post('/', authenticateToken, requireRole(UserRole.ADMIN), async (req: Aut
 
     res.status(201).json({ success: true, message: 'สร้างผู้ใช้งานสำเร็จ', data: formatUser(newUser) });
   } catch (error) {
+    if ((error as { code?: unknown } | null)?.code === 'P2002') {
+      let conflicts: UserConflictField[] = [];
+      try {
+        conflicts = await findUserConflictFields(normalizedUsername, String(email).trim().toLowerCase());
+      } catch {
+        // Keep the response safe if the follow-up lookup cannot identify the unique field.
+      }
+      if (conflicts.length === 0) conflicts = getUniqueConstraintConflictFields(error);
+      respondWithUserConflict(res, conflicts);
+      return;
+    }
     console.error('[Create User Error]', error);
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการสร้างผู้ใช้งาน' });
   }
