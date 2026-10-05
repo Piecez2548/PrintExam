@@ -16,6 +16,18 @@ const AUDITABLE_FIELDS = new Set([
   'semester', 'academic_year',
 ]);
 
+// Empty strings are equivalent to an unset value only for these optional text fields.
+// Other fields retain empty-string semantics where the application allows them.
+const OPTIONAL_EMPTY_FIELDS = new Set([
+  'original_filename', 'file_type', 'allowed_materials', 'special_instructions',
+  'section', 'room', 'department',
+]);
+
+function canonicalAuditFieldValue(field: string, value: unknown): unknown {
+  if (OPTIONAL_EMPTY_FIELDS.has(field) && value === '') return null;
+  return value ?? null;
+}
+
 function normalizeAuditValue(value: unknown): unknown {
   if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(normalizeAuditValue);
@@ -29,9 +41,10 @@ function normalizeAuditValue(value: unknown): unknown {
   return value;
 }
 
-function comparable(value: unknown): string {
-  if (value instanceof Date) return value.toISOString();
-  return JSON.stringify(value ?? null);
+function comparable(field: string, value: unknown): string {
+  const canonical = canonicalAuditFieldValue(field, value);
+  if (canonical instanceof Date) return canonical.toISOString();
+  return JSON.stringify(canonical);
 }
 
 /** Build one logical, safe before/after payload from explicitly selected fields. */
@@ -42,10 +55,10 @@ export function buildAuditChanges(
 ): AuditChanges {
   const changes: AuditChanges = {};
   for (const field of fields) {
-    if (!(field in after) || comparable(before[field]) === comparable(after[field])) continue;
+    if (!(field in after) || comparable(field, before[field]) === comparable(field, after[field])) continue;
     changes[field] = {
-      before: normalizeAuditValue(before[field] ?? null),
-      after: normalizeAuditValue(after[field] ?? null),
+      before: normalizeAuditValue(canonicalAuditFieldValue(field, before[field])),
+      after: normalizeAuditValue(canonicalAuditFieldValue(field, after[field])),
     };
   }
   return changes;

@@ -801,16 +801,12 @@ router.put('/:id', authenticateToken, uploadExamFile.single('file'), async (req:
       return;
     }
 
+    const nextNumCopies = num_copies !== undefined ? Number(num_copies) : exam.numCopies;
+    const nextStudents = student_count !== undefined ? Number(student_count) : exam.studentCount;
     const nextReserves = reserve_copies !== undefined ? Number(reserve_copies) : exam.reserveCopies;
-    const legacyTotal = num_copies !== undefined ? Number(num_copies) : undefined;
-    const nextStudents = student_count !== undefined
-      ? Number(student_count)
-      : legacyTotal !== undefined && Number.isInteger(legacyTotal)
-        ? Math.max(legacyTotal - nextReserves, 1)
-        : exam.studentCount;
-    if (!Number.isInteger(nextStudents) || nextStudents < 1 || !Number.isInteger(nextReserves) || nextReserves < 0 || nextReserves > 20) {
+    if (!Number.isInteger(nextNumCopies) || nextNumCopies < 1 || !Number.isInteger(nextStudents) || nextStudents < 1 || !Number.isInteger(nextReserves) || nextReserves < 0 || nextReserves > 20) {
       removeUploadedFile(req.file?.path);
-      res.status(400).json({ success: false, message: 'จำนวนผู้เข้าสอบหรือจำนวนชุดสำรองไม่ถูกต้อง' });
+      res.status(400).json({ success: false, message: 'จำนวนชุดพิมพ์ จำนวนผู้เข้าสอบ หรือจำนวนชุดสำรองไม่ถูกต้อง' });
       return;
     }
     if (req.file) {
@@ -826,8 +822,8 @@ router.put('/:id', authenticateToken, uploadExamFile.single('file'), async (req:
       originalFilename,
       fileType,
       fileSize,
-      numCopies: student_count !== undefined || reserve_copies !== undefined || legacyTotal !== undefined ? nextStudents + nextReserves : undefined,
-      studentCount: student_count !== undefined || legacyTotal !== undefined ? nextStudents : undefined,
+      numCopies: num_copies !== undefined ? nextNumCopies : undefined,
+      studentCount: student_count !== undefined ? nextStudents : undefined,
       reserveCopies: reserve_copies !== undefined ? nextReserves : undefined,
       section: section !== undefined ? String(section).trim() || null : undefined,
       numPages: num_pages !== undefined ? Number(num_pages) : undefined,
@@ -836,7 +832,7 @@ router.put('/:id', authenticateToken, uploadExamFile.single('file'), async (req:
       allowedMaterials: allowed_materials !== undefined ? allowed_materials || null : undefined,
       requiresAnswerSheet: requires_answer_sheet !== undefined ? requires_answer_sheet === 'true' || requires_answer_sheet === true : undefined,
       examSessionType: exam_session_type !== undefined ? exam_session_type : undefined,
-      specialInstructions: special_instructions !== undefined ? special_instructions : undefined,
+      specialInstructions: special_instructions !== undefined ? (special_instructions === '' ? null : special_instructions) : undefined,
       isDoubleSided:
         is_double_sided !== undefined
           ? is_double_sided === 'false' || is_double_sided === 0 || is_double_sided === false
