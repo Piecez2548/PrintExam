@@ -137,7 +137,7 @@ export const StatusTimeline: React.FC<StatusTimelineProps> = ({ currentStatus, h
                   {!isDataEdit && h.note && <div className="text-slate-600 dark:text-slate-300 mt-1">{h.note}</div>}
                   <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
                     <User className="w-3 h-3" />
-                    <span>{t("ผู้ดำเนินการ:")} {h.action_name}{h.action_role ? ` (${getAuditRoleLabel(h.action_role, t, language)})` : ''}</span>
+                    <span>{t("ผู้ดำเนินการ:")} {h.action_name}{h.action_deleted ? ` (${t('บัญชีถูกลบ')})` : ''}{h.action_role ? ` (${getAuditRoleLabel(h.action_role, t, language)})` : ''}</span>
                   </div>
                 </div>
               </div>

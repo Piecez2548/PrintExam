@@ -19,6 +19,7 @@ function formatSchedule(es: any) {
     course_name: es.course ? es.course.courseName : undefined,
     instructor_id: es.course ? es.course.instructorId : undefined,
     instructor_name: es.course?.instructor ? es.course.instructor.fullName : undefined,
+    instructor_deleted: Boolean(es.course?.instructor?.deletedAt),
     exam_type: es.examType,
     exam_date: es.examDate,
     start_time: es.startTime,
@@ -28,6 +29,7 @@ function formatSchedule(es: any) {
     student_count: es.course?.studentCount,
     coordinator_id: es.coordinatorId,
     coordinator_name: es.coordinator ? es.coordinator.fullName : undefined,
+    coordinator_deleted: Boolean(es.coordinator?.deletedAt),
     coordinator_phone: es.coordinator ? es.coordinator.phone : undefined,
     deadline_date: es.deadlineDate,
     status: es.status,
@@ -117,7 +119,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response): Prom
           },
         },
         coordinator: true,
-        exams: { where: { status: { not: 'CANCELLED' } }, select: { id: true }, take: 1 },
+        exams: { where: { status: { not: 'CANCELLED' }, deletedAt: null }, select: { id: true }, take: 1 },
       },
       orderBy: [{ examDate: 'asc' }, { startTime: 'asc' }],
       take: 500,
@@ -352,7 +354,7 @@ router.put(
         });
         if (deadline_date !== undefined) {
           await tx.exam.updateMany({
-            where: { scheduleId },
+            where: { scheduleId, deletedAt: null },
             data: { deadlineAt: new Date(`${nextDeadline}T23:59:59.999+07:00`) },
           });
         }

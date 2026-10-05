@@ -277,7 +277,7 @@ export const ExamPrintPage: React.FC = () => {
                   </div>
                   <div className="text-slate-400 text-[11px]">
 
-                    {t("โดย:")} {pr.printer_name} | {new Date(pr.printed_at).toLocaleString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH')}
+                    {t("โดย:")} {pr.printer_name}{pr.printer_deleted ? ` (${t('บัญชีถูกลบ', { ns: 'common' })})` : ''} | {new Date(pr.printed_at).toLocaleString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH')}
                   </div>
                 </div>
               ))}

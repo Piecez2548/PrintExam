@@ -157,7 +157,7 @@ export const AuditLogPage: React.FC = () => {
                       {new Date(log.created_at).toLocaleString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH')}
                     </td>
                     <td className="py-3.5 px-4 font-sans font-bold text-slate-800 dark:text-slate-200">
-                      {log.user_name || t('SYSTEM')}
+                      {log.user_name || t('SYSTEM')}{log.actor_deleted ? ` (${t('บัญชีถูกลบ')})` : ''}
                     </td>
                     <td className="py-3.5 px-4 font-sans">
                       {log.user_role ? (

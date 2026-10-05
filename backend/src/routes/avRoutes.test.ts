@@ -77,6 +77,7 @@ async function setup(t: TestContext, examOverrides: AnyRecord = {}) {
 
   stubMethod(t, prisma.user, 'findUnique', async () => avStaff);
   stubMethod(t, prisma.exam, 'findUnique', async () => exam);
+  stubMethod(t, prisma.exam, 'findFirst', async () => exam);
   stubMethod(t, prisma.printRecord, 'create', async ({ data }: AnyRecord) => {
     printRecords.push(data);
     return { id: printRecords.length, ...data };

@@ -31,6 +31,11 @@ export const examsApi = {
     return res.data;
   },
 
+  softDeleteExam: async (id: number | string): Promise<{ success: boolean; message: string }> => {
+    const res = await apiClient.delete(`/exams/${id}/soft-delete`);
+    return res.data;
+  },
+
   // AV Staff Operations (REQ-0006, REQ-0007, REQ-0009, REQ-0010, REQ-0011)
   validateExam: async (id: number | string, notes?: string): Promise<{ success: boolean; message: string }> => {
     const res = await apiClient.post(`/exams/${id}/validate`, { notes });

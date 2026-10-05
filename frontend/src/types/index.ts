@@ -39,6 +39,7 @@ export interface Course {
   department?: string;
   instructor_id: number;
   instructor_name?: string;
+  instructor_deleted?: boolean;
   instructor_email?: string;
   instructor_department?: string;
   section?: string;
@@ -55,6 +56,7 @@ export interface ExamSchedule {
   course_name: string;
   instructor_id?: number;
   instructor_name?: string;
+  instructor_deleted?: boolean;
   exam_type: 'MIDTERM' | 'FINAL' | 'QUIZ';
   exam_date: string;
   start_time: string;
@@ -64,6 +66,7 @@ export interface ExamSchedule {
   student_count?: number;
   coordinator_id?: number;
   coordinator_name?: string;
+  coordinator_deleted?: boolean;
   coordinator_phone?: string;
   deadline_date: string;
   status: 'SCHEDULED' | 'CONFIRMED' | 'CANCELLED';
@@ -79,6 +82,7 @@ export interface ExamStatusHistory {
   action_by: number;
   action_name: string;
   action_role?: string;
+  action_deleted?: boolean;
   action_at: string;
   note?: string;
 }
@@ -89,6 +93,7 @@ export interface ExamAuditTrailItem {
   action_at: string;
   action_name: string;
   action_role?: string;
+  action_deleted?: boolean;
   action_by?: number | null;
   to_status?: string;
   from_status?: string | null;
@@ -105,6 +110,7 @@ export interface PrintRecord {
   exam_id: number;
   printed_by: number;
   printer_name?: string;
+  printer_deleted?: boolean;
   printed_copies: number;
   paper_type: string;
   printed_at: string;
@@ -116,6 +122,7 @@ export interface PackingRecord {
   exam_id: number;
   packed_by: number;
   packer_name?: string;
+  packer_deleted?: boolean;
   packed_at: string;
   envelope_count: number;
   notes?: string;
@@ -126,8 +133,10 @@ export interface DeliveryRecord {
   exam_id: number;
   handed_over_by: number;
   handover_name?: string;
+  handover_deleted?: boolean;
   received_by: number;
   receiver_name?: string;
+  receiver_deleted?: boolean;
   delivered_at: string;
   receiver_signature_note?: string;
 }
@@ -143,6 +152,7 @@ export interface Exam {
   academic_year?: string;
   instructor_id?: number;
   instructor_name?: string;
+  instructor_deleted?: boolean;
   instructor_email?: string;
   instructor_phone?: string;
   instructor_office_room?: string;
@@ -177,6 +187,7 @@ export interface Exam {
   created_at: string;
   updated_at: string;
   coordinator_name?: string;
+  coordinator_deleted?: boolean;
   status_history?: ExamStatusHistory[];
   audit_trail?: ExamAuditTrailItem[];
   print_records?: PrintRecord[];
@@ -202,6 +213,7 @@ export interface AuditLogItem {
   user_id?: number;
   user_name?: string;
   user_role?: string;
+  actor_deleted?: boolean;
   action: string;
   entity_type: string;
   entity_id?: string;

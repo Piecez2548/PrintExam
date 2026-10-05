@@ -17,6 +17,7 @@ function formatCourse(c: any) {
     course_name: c.courseName,
     instructor_id: c.instructorId,
     instructor_name: c.instructor ? c.instructor.fullName : undefined,
+    instructor_deleted: Boolean(c.instructor?.deletedAt),
     instructor_email: c.instructor ? c.instructor.email : undefined,
     instructor_department: c.instructor ? c.instructor.department : undefined,
     department: c.department,

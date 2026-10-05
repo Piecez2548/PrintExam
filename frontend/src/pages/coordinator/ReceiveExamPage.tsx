@@ -167,7 +167,7 @@ export const ReceiveExamPage: React.FC = () => {
                           {exam.course_code}
                         </div>
                         <div className="text-slate-500 dark:text-slate-400">{exam.course_name}</div>
-                        <div className="text-[11px] text-slate-400">{t("ผู้สอน:")} {exam.instructor_name}</div>
+                        <div className="text-[11px] text-slate-400">{t("ผู้สอน:")} {exam.instructor_name}{exam.instructor_deleted ? ` (${t('บัญชีถูกลบ', { ns: 'common' })})` : ''}</div>
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="font-medium text-slate-800 dark:text-slate-200">

@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { dashboardApi } from '../../api/dashboard';
-import { DashboardSummaryData, ExamStatus } from '../../types';
+import { examsApi } from '../../api/exams';
+import { DashboardSummaryData, ExamStatus, UserRole } from '../../types';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { EnvelopePreviewModal } from '../../components/envelope/EnvelopePreviewModal';
+import { Modal } from '../../components/common/Modal';
 import { useWebSocket } from '../../context/WebSocketContext';
+import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
+import { localizedApiError } from '../../api/localizedError';
 import {
   BarChart3,
   Download,
@@ -18,12 +23,16 @@ import {
   FileCheck,
   PieChart,
   TrendingUp,
+  Trash2,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 
 export const ReportsPage: React.FC = () => {
   const { t } = useTranslation("admin");
+  const { user } = useAuth();
+  const toast = useToast();
+  const isAdmin = user?.role === UserRole.ADMIN;
 
   const { lastEvent } = useWebSocket();
   const [data, setData] = useState<DashboardSummaryData | null>(null);
@@ -36,6 +45,8 @@ export const ReportsPage: React.FC = () => {
   const [room, setRoom] = useState('');
 
   const [envelopeExam, setEnvelopeExam] = useState<any | null>(null);
+  const [examToDelete, setExamToDelete] = useState<any | null>(null);
+  const [isDeletingExam, setIsDeletingExam] = useState(false);
 
   const loadData = async () => {
     try {
@@ -57,6 +68,30 @@ export const ReportsPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [examDate, courseCode, status, room, lastEvent]);
+
+  const handleConfirmExamDelete = async () => {
+    if (!examToDelete) return;
+    setIsDeletingExam(true);
+    try {
+      await examsApi.softDeleteExam(examToDelete.exam_id);
+      setExamToDelete(null);
+      toast.success(t('นำข้อสอบออกจากรายการแล้ว'), t('ประวัติและไฟล์ยังถูกเก็บไว้'));
+      await loadData();
+    } catch (error) {
+      toast.error(t('ไม่สามารถลบข้อสอบได้'), localizedApiError(error, t('เกิดข้อผิดพลาด')));
+    } finally {
+      setIsDeletingExam(false);
+    }
+  };
+
+  const isHighRiskExam = (exam: any) => [
+    ExamStatus.APPROVED,
+    ExamStatus.PRINTING,
+    ExamStatus.PRINTED,
+    ExamStatus.PACKED,
+    ExamStatus.READY_FOR_PICKUP,
+    ExamStatus.DELIVERED,
+  ].includes(exam?.status);
 
   const handleResetFilters = () => {
     setExamDate('');
@@ -365,19 +400,20 @@ export const ReportsPage: React.FC = () => {
                 <th className="py-3.5 px-4">{t("สถานะข้อสอบ")}</th>
                 <th className="py-3.5 px-4">{t("เจ้าหน้าที่ดำเนินการสอบ")}</th>
                 <th className="py-3.5 px-4 text-right">{t("ใบปะหน้า")}</th>
+                {isAdmin && <th className="py-3.5 px-3 text-center">{t("การจัดการ")}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={isAdmin ? 9 : 8} className="py-12 text-center text-slate-400">
 
                     {t("กำลังประมวลผลข้อมูลรายงาน...")}
                   </td>
                 </tr>
               ) : !data || data.exams.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={isAdmin ? 9 : 8} className="py-12 text-center text-slate-400">
 
                     {t("ไม่พบข้อมูลข้อสอบตามเงื่อนไขที่เลือก")}
                   </td>
@@ -400,7 +436,7 @@ export const ReportsPage: React.FC = () => {
                       <div className="text-slate-500 dark:text-slate-400">{row.course_name}</div>
                     </td>
                     <td className="py-3.5 px-4">
-                      <div className="font-medium text-slate-800 dark:text-slate-200">{row.instructor_name}</div>
+                      <div className="font-medium text-slate-800 dark:text-slate-200">{row.instructor_name}{row.instructor_deleted ? ` (${t('บัญชีถูกลบ')})` : ''}</div>
                       <div className="text-[11px] text-slate-400">{row.instructor_department}</div>
                     </td>
                     <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-200">
@@ -414,7 +450,7 @@ export const ReportsPage: React.FC = () => {
                       <StatusBadge status={row.status} />
                     </td>
                     <td className="py-3.5 px-4 text-slate-700 dark:text-slate-300">
-                      {row.coordinator_name || '-'}
+                      {row.coordinator_name ? `${row.coordinator_name}${row.coordinator_deleted ? ` (${t('บัญชีถูกลบ')})` : ''}` : '-'}
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <button
@@ -443,6 +479,19 @@ export const ReportsPage: React.FC = () => {
                         {t("ใบปะหน้า")}
                       </button>
                     </td>
+                    {isAdmin && (
+                      <td className="py-3.5 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setExamToDelete(row)}
+                          className="inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-lg border border-rose-200 px-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/40"
+                          aria-label={`${t('ลบข้อสอบ')} ${row.course_code} ${row.exam_id}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          {t('ลบข้อสอบ')}
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -458,6 +507,41 @@ export const ReportsPage: React.FC = () => {
         exam={envelopeExam}
         showActions={false}
       />
+
+      <Modal
+        isOpen={!!examToDelete}
+        onClose={() => { if (!isDeletingExam) setExamToDelete(null); }}
+        title={t('ยืนยันลบข้อสอบ')}
+        maxWidth="md"
+      >
+        {examToDelete && (
+          <div className="space-y-4 text-sm">
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-900 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-100">
+              <p className="font-bold">{t('กำลังนำข้อมูลข้อสอบออกจากการใช้งานปกติ')}</p>
+              <p className="mt-1 text-xs">{t('ประวัติ Workflow การพิมพ์ การบรรจุ การส่งมอบ และ Audit จะถูกเก็บไว้')}</p>
+              <dl className="mt-3 grid grid-cols-1 gap-1 text-xs sm:grid-cols-2">
+                <div><dt className="inline font-semibold">{t('รหัสวิชา')}: </dt><dd className="inline">{examToDelete.course_code}</dd></div>
+                <div><dt className="inline font-semibold">{t('ชื่อวิชา')}: </dt><dd className="inline">{examToDelete.course_name}</dd></div>
+                <div><dt className="inline font-semibold">{t('ประเภทการสอบ')}: </dt><dd className="inline">{t(`examType.${examToDelete.exam_type || 'FINAL'}`, { ns: 'statuses', defaultValue: examToDelete.exam_type || '-' })}</dd></div>
+                <div><dt className="inline font-semibold">{t('วันสอบ')}: </dt><dd className="inline">{examToDelete.exam_date || '-'}</dd></div>
+                <div><dt className="inline font-semibold">{t('อาจารย์ผู้สอน')}: </dt><dd className="inline">{examToDelete.instructor_name || '-'}</dd></div>
+                <div><dt className="inline font-semibold">{t('สถานะปัจจุบัน')}: </dt><dd className="inline">{t(`status.${examToDelete.status}`, { ns: 'statuses', defaultValue: examToDelete.status })}</dd></div>
+              </dl>
+            </div>
+            {isHighRiskExam(examToDelete) && (
+              <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                {t('ข้อสอบนี้ผ่านขั้นตอนปฏิบัติงานแล้ว จะซ่อนจากรายการปกติแต่เก็บประวัติทั้งหมดไว้')}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+              <button type="button" disabled={isDeletingExam} onClick={() => setExamToDelete(null)} className="rounded-lg bg-slate-100 px-4 py-2 font-semibold text-slate-700 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-200">{t('ยกเลิก')}</button>
+              <button type="button" disabled={isDeletingExam} onClick={() => void handleConfirmExamDelete()} className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 font-bold text-white hover:bg-rose-700 disabled:opacity-50">
+                <Trash2 className="h-4 w-4" />{isDeletingExam ? t('กำลังลบ...') : t('ยืนยันลบข้อสอบ')}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

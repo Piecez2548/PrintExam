@@ -139,7 +139,7 @@ export const ExamPackPage: React.FC = () => {
           </div>
           <div>
             <span className="text-slate-500 dark:text-slate-400">{t("อาจารย์ผู้สอน:")}</span>
-            <div className="text-sm font-bold text-purple-900 dark:text-purple-100 mt-0.5">{exam.instructor_name}</div>
+            <div className="text-sm font-bold text-purple-900 dark:text-purple-100 mt-0.5">{exam.instructor_name}{exam.instructor_deleted ? ` (${t('บัญชีถูกลบ', { ns: 'common' })})` : ''}</div>
           </div>
         </div>
 

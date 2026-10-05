@@ -122,7 +122,7 @@ app.get('/uploads/:filename', authenticateToken, async (req: AuthRequest, res: R
   const filePath = path.join(uploadDir, safeName);
 
   const exam = await prisma.exam.findFirst({
-    where: { fileUrl: `/uploads/${safeName}` },
+    where: { fileUrl: `/uploads/${safeName}`, deletedAt: null },
     select: {
       createdById: true,
       originalFilename: true,

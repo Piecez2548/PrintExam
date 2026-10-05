@@ -59,12 +59,18 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
         isActive: true,
         mustChangePassword: true,
         sessionVersion: true,
+        deletedAt: true,
         createdAt: true,
       },
     });
 
     if (!user) {
       res.status(401).json({ success: false, message: 'ไม่พบบัญชีผู้ใช้ในระบบ' });
+      return;
+    }
+
+    if (user.deletedAt) {
+      res.status(403).json({ success: false, message: 'บัญชีผู้ใช้นี้ถูกลบแล้ว' });
       return;
     }
 
