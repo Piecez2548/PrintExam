@@ -1,0 +1,294 @@
+import assert from 'node:assert/strict';
+import { createServer, request as httpRequest, type Server } from 'node:http';
+import test, { type TestContext } from 'node:test';
+import bcrypt from 'bcryptjs';
+import express from 'express';
+import jwt from 'jsonwebtoken';
+
+process.env.JWT_SECRET ||= 'test-only-secret-that-is-long-enough-for-local-tests';
+
+type AnyRecord = Record<string, any>;
+
+function stubMethod(
+  t: TestContext,
+  target: AnyRecord,
+  methodName: string,
+  implementation: (...args: any[]) => any,
+): void {
+  const original = target[methodName];
+  Object.defineProperty(target, methodName, { configurable: true, writable: true, value: implementation });
+  t.after(() => Object.defineProperty(target, methodName, { configurable: true, writable: true, value: original }));
+}
+
+function makeUser(id: number, role = 'INSTRUCTOR'): AnyRecord {
+  return {
+    id,
+    username: `qa-user-${id}`,
+    passwordHash: bcrypt.hashSync('Valid@Password123', 4),
+    fullName: `QA User ${id}`,
+    email: `qa-user-${id}@example.test`,
+    role,
+    department: 'QA',
+    phone: null,
+    officeRoom: null,
+    isActive: true,
+    mustChangePassword: false,
+    sessionVersion: 0,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    twoFactorTempCode: null,
+    twoFactorExpiresAt: null,
+    twoFactorFailedAttempts: 0,
+  };
+}
+
+function tokenFor(user: AnyRecord): string {
+  return jwt.sign({ id: user.id, username: user.username, sessionVersion: user.sessionVersion }, process.env.JWT_SECRET!);
+}
+
+function send(
+  server: Server,
+  method: string,
+  path: string,
+  token?: string,
+  body?: unknown,
+): Promise<{ status: number; body: AnyRecord }> {
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({
+      hostname: '127.0.0.1',
+      port: address.port,
+      path,
+      method,
+      headers: {
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('end', () => resolve({
+        status: response.statusCode || 0,
+        body: chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {},
+      }));
+    });
+    request.on('error', reject);
+    request.end(body === undefined ? undefined : JSON.stringify(body));
+  });
+}
+
+async function setup(t: TestContext, options: { retained?: Record<string, number>; targetExists?: boolean; notificationCount?: number } = {}) {
+  const [{ default: userRoutes }, { default: authRoutes }, { prisma }, { UserRole }, { auditMiddleware }] = await Promise.all([
+    import('./userRoutes'),
+    import('./authRoutes'),
+    import('../database/prisma'),
+    import('../config/constants'),
+    import('../middleware/audit'),
+  ]);
+  const admin = makeUser(1, UserRole.ADMIN);
+  const target = makeUser(2);
+  const unrelated = makeUser(3);
+  const users = new Map<number, AnyRecord>([[admin.id, admin], [target.id, target], [unrelated.id, unrelated]]);
+  let targetExists = options.targetExists ?? true;
+  const retained = options.retained || {};
+  const retainedCalls: Record<string, any> = {};
+  let notificationCount = options.notificationCount ?? 0;
+  let notificationDeleteCalls = 0;
+  let deletedIds: number[] = [];
+  let auditCreates: AnyRecord[] = [];
+
+  stubMethod(t, prisma.user, 'findUnique', async ({ where }: AnyRecord) => users.get(where.id) || null);
+  stubMethod(t, prisma.user, 'findFirst', async ({ where }: AnyRecord) => {
+    const identifier = where?.OR?.[0]?.username?.equals;
+    return [...users.values()].find((user) => user.username.toLowerCase() === String(identifier || '').toLowerCase()) || null;
+  });
+  stubMethod(t, prisma.user, 'update', async ({ where, data }: AnyRecord) => {
+    const user = users.get(where.id);
+    if (!user) throw new Error('missing test user');
+    Object.assign(user, data);
+    if (data.sessionVersion?.increment) user.sessionVersion += data.sessionVersion.increment;
+    return user;
+  });
+  stubMethod(t, prisma.passwordResetRequest, 'updateMany', async () => ({ count: 0 }));
+  stubMethod(t, prisma.auditLog, 'create', async ({ data }: AnyRecord) => {
+    auditCreates.push(data);
+    return data;
+  });
+
+  const tx: AnyRecord = {
+    user: {
+      findUnique: async ({ where }: AnyRecord) => where.id === target.id && targetExists ? target : null,
+      delete: async ({ where }: AnyRecord) => {
+        deletedIds.push(where.id);
+        users.delete(where.id);
+        targetExists = false;
+        return target;
+      },
+    },
+    notification: {
+      deleteMany: async ({ where }: AnyRecord) => {
+        assert.equal(where.userId, target.id);
+        notificationDeleteCalls += 1;
+        const count = notificationCount;
+        notificationCount = 0;
+        return { count };
+      },
+    },
+  };
+  const retainedModels = [
+    'course', 'exam', 'examStatusHistory', 'envelopeLabel', 'printRecord', 'packingRecord',
+    'deliveryRecord', 'examSchedule', 'passwordResetRequest', 'auditLog',
+  ];
+  for (const model of retainedModels) {
+    tx[model] = {
+      count: async ({ where }: AnyRecord) => {
+        retainedCalls[model] = where;
+        return retained[model] || 0;
+      },
+    };
+  }
+  stubMethod(t, prisma, '$transaction', async (callback: (client: AnyRecord) => Promise<unknown>) => callback(tx));
+
+  const app = express();
+  app.use(express.json());
+  app.use('/api', auditMiddleware);
+  app.use('/api/auth', authRoutes);
+  app.use('/api/users', userRoutes);
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+
+  return {
+    server,
+    admin,
+    target,
+    unrelated,
+    users,
+    deleteTarget: (token = tokenFor(admin), id = target.id) => send(server, 'DELETE', `/api/users/${id}`, token),
+    notificationCount: () => notificationCount,
+    notificationDeleteCalls: () => notificationDeleteCalls,
+    deletedIds: () => deletedIds,
+    retainedCalls,
+    auditCreates: () => auditCreates,
+    setTargetExists: (value: boolean) => { targetExists = value; },
+  };
+}
+
+test('user deletion requires authentication and ADMIN role', async (t) => {
+  const state = await setup(t);
+  const unauthenticated = await send(state.server, 'DELETE', `/api/users/${state.target.id}`);
+  assert.equal(unauthenticated.status, 401);
+
+  const instructor = makeUser(4, 'INSTRUCTOR');
+  state.users.set(instructor.id, instructor);
+  const nonAdmin = await state.deleteTarget(tokenFor(instructor));
+  assert.equal(nonAdmin.status, 403);
+  assert.equal(state.users.has(state.target.id), true);
+});
+
+test('user deletion rejects missing and self targets', async (t) => {
+  const state = await setup(t, { targetExists: false });
+  const missing = await state.deleteTarget();
+  assert.equal(missing.status, 404);
+
+  state.setTargetExists(true);
+  const self = await state.deleteTarget(tokenFor(state.admin), state.admin.id);
+  assert.equal(self.status, 400);
+  assert.equal(state.users.has(state.admin.id), true);
+});
+
+test('retained business, workflow, and audit references block permanent deletion', async (t) => {
+  const cases = [
+    ['course', 'Subject.instructor_id'],
+    ['exam', 'Exam.created_by'],
+    ['examStatusHistory', 'Activity_Log.action_by'],
+    ['envelopeLabel', 'Envelope_Label.generated_by'],
+    ['printRecord', 'Exam_Print.printed_by'],
+    ['packingRecord', 'Envelope_Packing.packed_by'],
+    ['deliveryRecord', 'Exam_Delivery handed_over_by / received_by'],
+    ['examSchedule', 'Exam_Schedule.coordinator_id'],
+    ['passwordResetRequest', 'Password_Reset_Request.user_id / resolved_by'],
+    ['auditLog', 'System_Audit_Log.user_id'],
+  ] as const;
+
+  for (const [model, relation] of cases) {
+    await t.test(`${relation} is retained`, async (subtest) => {
+      const state = await setup(subtest, { retained: { [model]: 1 }, notificationCount: 2 });
+      const result = await state.deleteTarget();
+      assert.equal(result.status, 409);
+      assert.equal(result.body.code, 'USER_HAS_RETAINED_HISTORY');
+      assert.equal(state.users.has(state.target.id), true);
+      assert.deepEqual(state.deletedIds(), []);
+      assert.equal(state.notificationCount(), 2);
+      assert.equal(state.notificationDeleteCalls(), 0);
+      if (model === 'deliveryRecord') {
+        assert.deepEqual(state.retainedCalls.deliveryRecord.OR, [
+          { handedOverById: state.target.id },
+          { receivedById: state.target.id },
+        ]);
+      }
+      if (model === 'passwordResetRequest') {
+        assert.deepEqual(state.retainedCalls.passwordResetRequest.OR, [
+          { userId: state.target.id },
+          { resolvedById: state.target.id },
+        ]);
+      }
+    });
+  }
+});
+
+test('eligible account is permanently deleted, owned notifications are removed, and other users remain', async (t) => {
+  const state = await setup(t, { notificationCount: 3 });
+  const result = await state.deleteTarget();
+  assert.equal(result.status, 200);
+  assert.equal(state.users.has(state.target.id), false);
+  assert.equal(state.users.has(state.admin.id), true);
+  assert.equal(state.users.has(state.unrelated.id), true);
+  assert.deepEqual(state.deletedIds(), [state.target.id]);
+  assert.equal(state.notificationDeleteCalls(), 1);
+  assert.equal(state.notificationCount(), 0);
+  const deletionAudit = state.auditCreates().find((entry) => entry.action === 'DELETE_USER'
+    && entry.userId === state.admin.id && entry.entityId === String(state.target.id));
+  assert.ok(deletionAudit);
+  assert.deepEqual(JSON.parse(deletionAudit.detailJson), { permanent_deletion: true });
+
+  const login = await send(state.server, 'POST', '/api/auth/login', undefined, {
+    username: state.target.username,
+    password: 'Valid@Password123',
+  });
+  assert.equal(login.status, 401);
+});
+
+test('existing edit, suspend, activate, reset-password and ADMIN permissions remain available', async (t) => {
+  const state = await setup(t);
+  const originalPasswordHash = state.target.passwordHash;
+
+  const edit = await send(state.server, 'PUT', `/api/users/${state.target.id}`, tokenFor(state.admin), {
+    full_name: 'Edited QA User',
+  });
+  assert.equal(edit.status, 200);
+  assert.equal(edit.body.data.full_name, 'Edited QA User');
+
+  const suspend = await send(state.server, 'PATCH', `/api/users/${state.target.id}/suspend`, tokenFor(state.admin));
+  assert.equal(suspend.status, 200);
+  assert.equal(suspend.body.data.is_active, false);
+
+  const activate = await send(state.server, 'PATCH', `/api/users/${state.target.id}/suspend`, tokenFor(state.admin));
+  assert.equal(activate.status, 200);
+  assert.equal(activate.body.data.is_active, true);
+
+  const reset = await send(state.server, 'PATCH', `/api/users/${state.target.id}/reset-password`, tokenFor(state.admin), {
+    new_password: 'Temporary@Password123',
+    admin_password: 'Valid@Password123',
+  });
+  assert.equal(reset.status, 200);
+  assert.notEqual(state.target.passwordHash, originalPasswordHash);
+  assert.equal(bcrypt.compareSync('Temporary@Password123', state.target.passwordHash), true);
+
+  const nonAdmin = makeUser(4, 'INSTRUCTOR');
+  state.users.set(nonAdmin.id, nonAdmin);
+  const forbidden = await send(state.server, 'DELETE', `/api/users/${state.target.id}`, tokenFor(nonAdmin));
+  assert.equal(forbidden.status, 403);
+  assert.equal(state.users.has(state.target.id), true);
+});

@@ -507,6 +507,11 @@ router.delete('/:id', authenticateToken, requireRole(UserRole.ADMIN), async (req
   const { id } = req.params;
   const userId = Number(id);
 
+  if (!Number.isInteger(userId) || userId <= 0) {
+    res.status(400).json({ success: false, code: 'INVALID_USER_ID', message: 'รหัสผู้ใช้งานไม่ถูกต้อง' });
+    return;
+  }
+
   // Prevent deleting self
   if (req.user?.id === userId) {
     res.status(400).json({ success: false, message: 'ไม่สามารถลบบัญชีผู้ใช้ของตนเองได้' });
@@ -514,27 +519,52 @@ router.delete('/:id', authenticateToken, requireRole(UserRole.ADMIN), async (req
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true },
+      });
+      if (!user) return { kind: 'not_found' as const };
+
+      // These relations represent retained workflow, business, or audit history.
+      // A deletion is eligible only when none of them still references this user.
+      const retainedReferenceChecks = await Promise.all([
+        tx.course.count({ where: { instructorId: userId } }),
+        tx.exam.count({ where: { createdById: userId } }),
+        tx.examStatusHistory.count({ where: { actionById: userId } }),
+        tx.envelopeLabel.count({ where: { generatedById: userId } }),
+        tx.printRecord.count({ where: { printedById: userId } }),
+        tx.packingRecord.count({ where: { packedById: userId } }),
+        tx.deliveryRecord.count({ where: { OR: [{ handedOverById: userId }, { receivedById: userId }] } }),
+        tx.examSchedule.count({ where: { coordinatorId: userId } }),
+        tx.passwordResetRequest.count({ where: { OR: [{ userId }, { resolvedById: userId }] } }),
+        tx.auditLog.count({ where: { userId } }),
+      ]);
+
+      if (retainedReferenceChecks.some((count) => count > 0)) {
+        return { kind: 'retained_history' as const };
+      }
+
+      // Notifications are account-owned disposable data (the FK also cascades).
+      await tx.notification.deleteMany({ where: { userId } });
+
+      await tx.user.delete({ where: { id: userId } });
+
+      return { kind: 'deleted' as const };
     });
 
-    if (!user) {
+    if (result.kind === 'not_found') {
       res.status(404).json({ success: false, message: 'ไม่พบผู้ใช้งาน' });
       return;
     }
-
-    // Preserve exam, delivery and audit evidence. In this system "delete" is a
-    // recoverable account deactivation rather than destructive data removal.
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        isActive: false,
-        sessionVersion: { increment: 1 },
-        twoFactorTempCode: null,
-        twoFactorExpiresAt: null,
-        twoFactorFailedAttempts: 0,
-      },
-    });
+    if (result.kind === 'retained_history') {
+      res.status(409).json({
+        success: false,
+        code: 'USER_HAS_RETAINED_HISTORY',
+        message: 'ไม่สามารถลบบัญชีนี้ได้ เนื่องจากมีประวัติการใช้งานหรือข้อมูลในกระบวนการสอบที่ต้องเก็บรักษา',
+      });
+      return;
+    }
 
     await recordAuditLog(
       req.user!.id,
@@ -544,14 +574,21 @@ router.delete('/:id', authenticateToken, requireRole(UserRole.ADMIN), async (req
       'USER',
       id,
       req.ip || '127.0.0.1',
-      {
-        deleted_username: user.username,
-        deleted_full_name: user.fullName,
-      }
+      { permanent_deletion: true }
     );
 
-    res.json({ success: true, message: `ปิดใช้งานบัญชี "${user.fullName}" (${user.username}) แล้ว โดยเก็บประวัติระบบไว้` });
+    res.json({ success: true, message: 'ลบบัญชีถาวรแล้ว' });
   } catch (error) {
+    // A concurrent retained record can still win the race after the reference
+    // checks. The FK rejects the delete and the transaction rolls back.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+      res.status(409).json({
+        success: false,
+        code: 'USER_HAS_RETAINED_HISTORY',
+        message: 'ไม่สามารถลบบัญชีนี้ได้ เนื่องจากมีประวัติการใช้งานหรือข้อมูลในกระบวนการสอบที่ต้องเก็บรักษา',
+      });
+      return;
+    }
     console.error('[Delete User Error]', error);
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการลบผู้ใช้งาน' });
   }
