@@ -19,8 +19,12 @@ import {
   PieChart,
   TrendingUp,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
 
 export const ReportsPage: React.FC = () => {
+  const { t } = useTranslation("admin");
+
   const { lastEvent } = useWebSocket();
   const [data, setData] = useState<DashboardSummaryData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,7 +75,7 @@ export const ReportsPage: React.FC = () => {
       return `"${text.replace(/"/g, '""')}"`;
     };
 
-    const headers = ['รหัสวิชา', 'ชื่อวิชา', 'อาจารย์ผู้สอน', 'วันสอบ', 'เวลาสอบ', 'ห้องสอบ', 'จำนวนพิมพ์', 'สถานะ', 'จนท.ดำเนินการสอบ'];
+    const headers = ['รหัสวิชา', 'ชื่อวิชา', 'อาจารย์ผู้สอน', 'วันสอบ', 'เวลาสอบ', 'ห้องสอบ', 'จำนวนพิมพ์', 'สถานะ', 'จนท.ดำเนินการสอบ'].map((header) => t(header));
     const rows = data.exams.map((e) => [
       csvCell(e.course_code),
       csvCell(e.course_name),
@@ -103,12 +107,12 @@ export const ReportsPage: React.FC = () => {
   }, { TOTAL: 0 });
 
   const statusChart = [
-    { label: 'รอส่ง/รอตรวจ', value: (counts[ExamStatus.DRAFT] || 0) + (counts[ExamStatus.SUBMITTED] || 0), color: '#3b82f6' },
-    { label: 'ต้องแก้ไข', value: counts[ExamStatus.REJECTED] || 0, color: '#f43f5e' },
-    { label: 'ผ่านการตรวจ', value: counts[ExamStatus.APPROVED] || 0, color: '#14b8a6' },
-    { label: 'กำลัง/พิมพ์เสร็จ', value: (counts[ExamStatus.PRINTING] || 0) + (counts[ExamStatus.PRINTED] || 0), color: '#f59e0b' },
-    { label: 'บรรจุ/พร้อมรับ', value: (counts[ExamStatus.PACKED] || 0) + (counts[ExamStatus.READY_FOR_PICKUP] || 0), color: '#8b5cf6' },
-    { label: 'ส่งมอบแล้ว', value: counts[ExamStatus.DELIVERED] || 0, color: '#10b981' },
+    { label: t("รอส่ง/รอตรวจ"), value: (counts[ExamStatus.DRAFT] || 0) + (counts[ExamStatus.SUBMITTED] || 0), color: '#3b82f6' },
+    { label: t("ต้องแก้ไข"), value: counts[ExamStatus.REJECTED] || 0, color: '#f43f5e' },
+    { label: t("ผ่านการตรวจ"), value: counts[ExamStatus.APPROVED] || 0, color: '#14b8a6' },
+    { label: t("กำลัง/พิมพ์เสร็จ"), value: (counts[ExamStatus.PRINTING] || 0) + (counts[ExamStatus.PRINTED] || 0), color: '#f59e0b' },
+    { label: t("บรรจุ/พร้อมรับ"), value: (counts[ExamStatus.PACKED] || 0) + (counts[ExamStatus.READY_FOR_PICKUP] || 0), color: '#8b5cf6' },
+    { label: t("ส่งมอบแล้ว"), value: counts[ExamStatus.DELIVERED] || 0, color: '#10b981' },
   ];
   const chartTotal = statusChart.reduce((sum, item) => sum + item.value, 0);
   let donutCursor = 0;
@@ -132,7 +136,7 @@ export const ReportsPage: React.FC = () => {
       const submittedKey = `${submittedDate.getFullYear()}-${String(submittedDate.getMonth() + 1).padStart(2, '0')}-${String(submittedDate.getDate()).padStart(2, '0')}`;
       return submittedKey === dateKey;
     }).length;
-    return { key: dateKey, label: date.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }), value };
+    return { key: dateKey, label: date.toLocaleDateString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH', { day: 'numeric', month: 'short' }), value };
   });
   const trendMax = Math.max(...submissionTrend.map((item) => item.value), 1);
   const trendPoints = submissionTrend.map((item, index) => ({
@@ -150,10 +154,11 @@ export const ReportsPage: React.FC = () => {
         <div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
             <BarChart3 className="w-6 h-6 text-brand-600" />
-            <span>สรุปภาพรวมระบบข้อสอบ</span>
+            <span>{t("สรุปภาพรวมระบบข้อสอบ")}</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            ข้อมูลภาพรวมระดับระบบชุดเดียวกันสำหรับทุกบทบาท ส่วนงานเฉพาะของแต่ละบทบาทอยู่ในเมนูของตนเอง
+
+            {t("ข้อมูลภาพรวมระดับระบบชุดเดียวกันสำหรับทุกบทบาท ส่วนงานเฉพาะของแต่ละบทบาทอยู่ในเมนูของตนเอง")}
           </p>
         </div>
 
@@ -163,58 +168,59 @@ export const ReportsPage: React.FC = () => {
           className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-500/25 transition-all disabled:opacity-50"
         >
           <Download className="w-4 h-4" />
-          ส่งออกรายงาน (Export CSV)
+
+          {t("ส่งออกรายงาน (Export CSV)")}
         </button>
       </div>
 
       {/* Metric Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-          <div className="text-xs font-bold text-slate-500 uppercase">ข้อสอบทั้งหมด</div>
+          <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">{t("ข้อสอบทั้งหมด")}</div>
           <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">
             {counts.TOTAL || 0}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">{data?.totalCourses || 0} รายวิชา</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">{data?.totalCourses || 0}  {t("รายวิชา")}</div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-          <div className="text-xs font-bold text-teal-600 uppercase">ตัดข้อสอบแล้ว</div>
+          <div className="text-xs font-bold text-teal-600 uppercase">{t("ตัดข้อสอบแล้ว")}</div>
           <div className="text-2xl font-black text-teal-600 mt-1">
             {counts[ExamStatus.APPROVED] || 0}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">ผ่านการตรวจสอบ</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">{t("ผ่านการตรวจสอบ")}</div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-          <div className="text-xs font-bold text-amber-600 uppercase">กำลัง/พิมพ์เสร็จ</div>
+          <div className="text-xs font-bold text-amber-600 uppercase">{t("กำลัง/พิมพ์เสร็จ")}</div>
           <div className="text-2xl font-black text-amber-600 mt-1">
             {(counts[ExamStatus.PRINTING] || 0) + (counts[ExamStatus.PRINTED] || 0)}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">{data?.totalCopies || 0} ชุดรวม</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">{data?.totalCopies || 0}  {t("ชุดรวม")}</div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-          <div className="text-xs font-bold text-purple-600 uppercase">บรรจุซองแล้ว</div>
+          <div className="text-xs font-bold text-purple-600 uppercase">{t("บรรจุซองแล้ว")}</div>
           <div className="text-2xl font-black text-purple-600 mt-1">
             {counts[ExamStatus.PACKED] || 0}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">ติดใบปะหน้าซอง</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">{t("ติดใบปะหน้าซอง")}</div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-          <div className="text-xs font-bold text-sky-600 uppercase">พร้อมรับมอบ</div>
+          <div className="text-xs font-bold text-sky-600 uppercase">{t("พร้อมรับมอบ")}</div>
           <div className="text-2xl font-black text-sky-600 mt-1">
             {counts[ExamStatus.READY_FOR_PICKUP] || 0}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">แจ้งศูนย์สอบแล้ว</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">{t("แจ้งศูนย์สอบแล้ว")}</div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-          <div className="text-xs font-bold text-emerald-600 uppercase">ส่งมอบเสร็จสิ้น</div>
+          <div className="text-xs font-bold text-emerald-600 uppercase">{t("ส่งมอบเสร็จสิ้น")}</div>
           <div className="text-2xl font-black text-emerald-600 mt-1">
             {counts[ExamStatus.DELIVERED] || 0}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">รับเข้าห้องสอบแล้ว</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">{t("รับเข้าห้องสอบแล้ว")}</div>
         </div>
       </div>
 
@@ -223,15 +229,15 @@ export const ReportsPage: React.FC = () => {
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-6">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900 dark:text-white"><PieChart className="h-5 w-5 text-brand-600" /> สัดส่วนสถานะข้อสอบ</h2>
-              <p className="mt-1 text-sm text-slate-500">แยกตามขั้นตอนการดำเนินงานของรายการที่แสดง</p>
+              <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900 dark:text-white"><PieChart className="h-5 w-5 text-brand-600" />  {t("สัดส่วนสถานะข้อสอบ")}</h2>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t("แยกตามขั้นตอนการดำเนินงานของรายการที่แสดง")}</p>
             </div>
-            <span className="shrink-0 rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700 dark:bg-brand-950 dark:text-brand-300">{chartTotal} รายการ</span>
+            <span className="shrink-0 rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700 dark:bg-brand-950 dark:text-brand-300">{chartTotal}  {t("รายการ")}</span>
           </div>
           <div className="mt-6 grid items-center gap-6 sm:grid-cols-[190px_1fr]">
-            <div className="relative mx-auto grid h-44 w-44 place-items-center rounded-full shadow-inner" style={{ background: donutGradient }} role="img" aria-label="กราฟวงแหวนแสดงสัดส่วนสถานะข้อสอบ">
+            <div className="relative mx-auto grid h-44 w-44 place-items-center rounded-full shadow-inner" style={{ background: donutGradient }} role="img" aria-label={t("กราฟวงแหวนแสดงสัดส่วนสถานะข้อสอบ")}>
               <div className="grid h-28 w-28 place-items-center rounded-full bg-white text-center shadow-sm dark:bg-slate-900">
-                <div><div className="text-3xl font-black text-slate-900 dark:text-white">{chartTotal}</div><div className="text-xs font-semibold text-slate-500">ข้อสอบทั้งหมด</div></div>
+                <div><div className="text-3xl font-black text-slate-900 dark:text-white">{chartTotal}</div><div className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t("ข้อสอบทั้งหมด")}</div></div>
               </div>
             </div>
             <div className="space-y-3">
@@ -249,11 +255,11 @@ export const ReportsPage: React.FC = () => {
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-6">
           <div className="flex items-start justify-between gap-3">
-            <div><h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900 dark:text-white"><TrendingUp className="h-5 w-5 text-brand-600" /> แนวโน้มการส่งข้อสอบ</h2><p className="mt-1 text-sm text-slate-500">จำนวนข้อสอบที่ส่งเข้าระบบในช่วง 7 วันล่าสุด</p></div>
-            <span className="shrink-0 rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">7 วันล่าสุด</span>
+            <div><h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900 dark:text-white"><TrendingUp className="h-5 w-5 text-brand-600" />  {t("แนวโน้มการส่งข้อสอบ")}</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t("จำนวนข้อสอบที่ส่งเข้าระบบในช่วง 7 วันล่าสุด")}</p></div>
+            <span className="shrink-0 rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">{t("7 วันล่าสุด")}</span>
           </div>
           <div className="mt-5 overflow-hidden rounded-xl bg-gradient-to-b from-brand-50/70 to-white px-2 pt-2 dark:from-brand-950/30 dark:to-slate-900">
-            <svg viewBox="0 0 640 200" className="h-52 w-full" role="img" aria-label="กราฟเส้นแสดงจำนวนการส่งข้อสอบ 7 วันล่าสุด" preserveAspectRatio="none">
+            <svg viewBox="0 0 640 200" className="h-52 w-full" role="img" aria-label={t("กราฟเส้นแสดงจำนวนการส่งข้อสอบ 7 วันล่าสุด")} preserveAspectRatio="none">
               {[50, 92, 134, 176].map((y) => <line key={y} x1="34" y1={y} x2="606" y2={y} stroke="currentColor" className="text-slate-200 dark:text-slate-700" strokeWidth="1" strokeDasharray="4 5" />)}
               <defs><linearGradient id="reportSubmissionArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity="0.28" /><stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" /></linearGradient></defs>
               <polygon points={trendArea} fill="url(#reportSubmissionArea)" />
@@ -274,14 +280,15 @@ export const ReportsPage: React.FC = () => {
             </span>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">ค้นหาและกรองข้อมูล</h2>
+                <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">{t("ค้นหาและกรองข้อมูล")}</h2>
                 {activeFilterCount > 0 && (
                   <span className="rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-700 dark:bg-brand-950 dark:text-brand-300">
-                    ใช้งาน {activeFilterCount} ตัวกรอง
+
+                    {t("ใช้งาน")} {activeFilterCount}  {t("ตัวกรอง")}
                   </span>
                 )}
               </div>
-              <p className="mt-0.5 text-xs text-slate-500">กราฟ สถิติ และตารางจะอัปเดตตามเงื่อนไขที่เลือก</p>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{t("กราฟ สถิติ และตารางจะอัปเดตตามเงื่อนไขที่เลือก")}</p>
             </div>
           </div>
           <button
@@ -291,7 +298,8 @@ export const ReportsPage: React.FC = () => {
             className="inline-flex h-9 items-center justify-center gap-1.5 self-start rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 sm:self-auto"
           >
             <RotateCcw className="h-3.5 w-3.5" />
-            ล้างตัวกรอง
+
+            {t("ล้างตัวกรอง")}
           </button>
         </div>
 
@@ -299,14 +307,15 @@ export const ReportsPage: React.FC = () => {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12">
             <div className="sm:col-span-2 lg:col-span-4">
               <label htmlFor="report-course-filter" className="mb-1.5 block text-xs font-bold text-slate-600 dark:text-slate-300">
-                ค้นหารายวิชา
+
+                {t("ค้นหารายวิชา")}
               </label>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
                   id="report-course-filter"
                   type="search"
-                  placeholder="รหัสวิชา หรือชื่อวิชา"
+                  placeholder={t("รหัสวิชา หรือชื่อวิชา")}
                   value={courseCode}
                   onChange={(e) => setCourseCode(e.target.value)}
                   className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-brand-950"
@@ -315,27 +324,27 @@ export const ReportsPage: React.FC = () => {
             </div>
 
             <div className="lg:col-span-2">
-              <label htmlFor="report-date-filter" className="mb-1.5 block text-xs font-bold text-slate-600 dark:text-slate-300">วันที่สอบ</label>
+              <label htmlFor="report-date-filter" className="mb-1.5 block text-xs font-bold text-slate-600 dark:text-slate-300">{t("วันที่สอบ")}</label>
               <input id="report-date-filter" type="date" value={examDate} onChange={(e) => setExamDate(e.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-brand-950" />
             </div>
 
             <div className="lg:col-span-3">
-              <label htmlFor="report-room-filter" className="mb-1.5 block text-xs font-bold text-slate-600 dark:text-slate-300">ห้องสอบ</label>
-              <input id="report-room-filter" type="search" placeholder="เช่น LAB-401 หรือ CB-2301" value={room} onChange={(e) => setRoom(e.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-brand-950" />
+              <label htmlFor="report-room-filter" className="mb-1.5 block text-xs font-bold text-slate-600 dark:text-slate-300">{t("ห้องสอบ")}</label>
+              <input id="report-room-filter" type="search" placeholder={t("เช่น LAB-401 หรือ CB-2301")} value={room} onChange={(e) => setRoom(e.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-brand-950" />
             </div>
 
             <div className="lg:col-span-3">
-              <label htmlFor="report-status-filter" className="mb-1.5 block text-xs font-bold text-slate-600 dark:text-slate-300">สถานะข้อสอบ</label>
+              <label htmlFor="report-status-filter" className="mb-1.5 block text-xs font-bold text-slate-600 dark:text-slate-300">{t("สถานะข้อสอบ")}</label>
               <select id="report-status-filter" value={status} onChange={(e) => setStatus(e.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium outline-none transition focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-brand-950">
-                <option value="">ทุกสถานะ</option>
-                <option value={ExamStatus.SUBMITTED}>ส่งแล้ว รอตรวจสอบ</option>
-                <option value={ExamStatus.REJECTED}>ไม่ผ่านตรวจสอบ</option>
-                <option value={ExamStatus.APPROVED}>อนุมัติ / ตัดข้อสอบแล้ว</option>
-                <option value={ExamStatus.PRINTING}>กำลังจัดพิมพ์</option>
-                <option value={ExamStatus.PRINTED}>พิมพ์เสร็จเรียบร้อย</option>
-                <option value={ExamStatus.PACKED}>บรรจุซองเรียบร้อย</option>
-                <option value={ExamStatus.READY_FOR_PICKUP}>พร้อมส่งมอบ</option>
-                <option value={ExamStatus.DELIVERED}>ส่งมอบแล้ว</option>
+                <option value="">{t("ทุกสถานะ")}</option>
+                <option value={ExamStatus.SUBMITTED}>{t("ส่งแล้ว รอตรวจสอบ")}</option>
+                <option value={ExamStatus.REJECTED}>{t("ไม่ผ่านตรวจสอบ")}</option>
+                <option value={ExamStatus.APPROVED}>{t("อนุมัติ / ตัดข้อสอบแล้ว")}</option>
+                <option value={ExamStatus.PRINTING}>{t("กำลังจัดพิมพ์")}</option>
+                <option value={ExamStatus.PRINTED}>{t("พิมพ์เสร็จเรียบร้อย")}</option>
+                <option value={ExamStatus.PACKED}>{t("บรรจุซองเรียบร้อย")}</option>
+                <option value={ExamStatus.READY_FOR_PICKUP}>{t("พร้อมส่งมอบ")}</option>
+                <option value={ExamStatus.DELIVERED}>{t("ส่งมอบแล้ว")}</option>
               </select>
             </div>
           </div>
@@ -346,29 +355,31 @@ export const ReportsPage: React.FC = () => {
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
+            <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="py-3.5 px-4">วันที่ & เวลาสอบ</th>
-                <th className="py-3.5 px-4">รหัสวิชา & ชื่อวิชา</th>
-                <th className="py-3.5 px-4">อาจารย์ผู้สอน</th>
-                <th className="py-3.5 px-4">ห้องสอบ</th>
-                <th className="py-3.5 px-4">จำนวนพิมพ์</th>
-                <th className="py-3.5 px-4">สถานะข้อสอบ</th>
-                <th className="py-3.5 px-4">จนท.ดำเนินการสอบ</th>
-                <th className="py-3.5 px-4 text-right">ใบปะหน้า</th>
+                <th className="py-3.5 px-4">{t("วันที่ & เวลาสอบ")}</th>
+                <th className="py-3.5 px-4">{t("รหัสวิชา & ชื่อวิชา")}</th>
+                <th className="py-3.5 px-4">{t("อาจารย์ผู้สอน")}</th>
+                <th className="py-3.5 px-4">{t("ห้องสอบ")}</th>
+                <th className="py-3.5 px-4">{t("จำนวนพิมพ์")}</th>
+                <th className="py-3.5 px-4">{t("สถานะข้อสอบ")}</th>
+                <th className="py-3.5 px-4">{t("จนท.ดำเนินการสอบ")}</th>
+                <th className="py-3.5 px-4 text-right">{t("ใบปะหน้า")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {isLoading ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400">
-                    กำลังประมวลผลข้อมูลรายงาน...
+
+                    {t("กำลังประมวลผลข้อมูลรายงาน...")}
                   </td>
                 </tr>
               ) : !data || data.exams.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400">
-                    ไม่พบข้อมูลข้อสอบตามเงื่อนไขที่เลือก
+
+                    {t("ไม่พบข้อมูลข้อสอบตามเงื่อนไขที่เลือก")}
                   </td>
                 </tr>
               ) : (
@@ -376,17 +387,17 @@ export const ReportsPage: React.FC = () => {
                   <tr key={row.exam_id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                     <td className="py-3.5 px-4">
                       <div className="font-bold text-slate-900 dark:text-slate-100">
-                        {row.exam_date ? new Date(row.exam_date).toLocaleDateString('th-TH') : '-'}
+                        {row.exam_date ? new Date(row.exam_date).toLocaleDateString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH') : '-'}
                       </div>
-                      <div className="text-[11px] text-slate-500">
-                        {row.start_time && row.end_time ? `${row.start_time}-${row.end_time} น.` : ''} ({row.exam_type || 'FINAL'})
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {row.start_time && row.end_time ? t("{{v0}}-{{v1}} น.", { v0: row.start_time, v1: row.end_time }) : ''} ({t(`examType.${row.exam_type || 'FINAL'}`, { ns: 'statuses', defaultValue: row.exam_type || 'FINAL' })})
                       </div>
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="font-bold text-slate-900 dark:text-slate-100 text-sm">
                         {row.course_code}
                       </div>
-                      <div className="text-slate-500">{row.course_name}</div>
+                      <div className="text-slate-500 dark:text-slate-400">{row.course_name}</div>
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="font-medium text-slate-800 dark:text-slate-200">{row.instructor_name}</div>
@@ -396,8 +407,8 @@ export const ReportsPage: React.FC = () => {
                       {row.room || '-'}
                     </td>
                     <td className="py-3.5 px-4 font-black text-slate-800 dark:text-slate-200">
-                      {row.num_copies > 0 ? `${row.num_copies} ชุด` : 'ยังไม่ระบุ'}
-                      <div className="text-[11px] font-normal text-slate-400">{row.num_pages || 1} หน้า/ชุด</div>
+                      {row.num_copies > 0 ? t("{{v0}} ชุด", { v0: row.num_copies }) : t("ยังไม่ระบุ")}
+                      <div className="text-[11px] font-normal text-slate-400">{row.num_pages || 1}  {t("หน้า/ชุด")}</div>
                     </td>
                     <td className="py-3.5 px-4">
                       <StatusBadge status={row.status} />
@@ -425,10 +436,11 @@ export const ReportsPage: React.FC = () => {
                             academic_year: row.academic_year,
                           })
                         }
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium"
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 dark:text-slate-300 hover:bg-slate-200 font-medium"
                       >
                         <FileCheck className="w-3.5 h-3.5 inline mr-1" />
-                        ใบปะหน้า
+
+                        {t("ใบปะหน้า")}
                       </button>
                     </td>
                   </tr>

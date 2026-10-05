@@ -4,8 +4,12 @@ import { notificationsApi } from '../../api/notifications';
 import { NotificationItem } from '../../types';
 import { Bell, CheckCheck, Clock, ExternalLink } from 'lucide-react';
 import { useWebSocket } from '../../context/WebSocketContext';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
 
 export const NotificationsPage: React.FC = () => {
+  const { t } = useTranslation("notifications");
+
   const navigate = useNavigate();
   const { lastEvent } = useWebSocket();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -51,10 +55,11 @@ export const NotificationsPage: React.FC = () => {
         <div>
           <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Bell className="w-5 h-5 text-brand-600" />
-            <span>ศูนย์การแจ้งเตือน (Notifications)</span>
+            <span>{t("ศูนย์การแจ้งเตือน (Notifications)")}</span>
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            ประวัติการแจ้งเตือนสถานะข้อสอบและกิจกรรมสำคัญทั้งหมด
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+
+            {t("ประวัติการแจ้งเตือนสถานะข้อสอบและกิจกรรมสำคัญทั้งหมด")}
           </p>
         </div>
 
@@ -63,16 +68,17 @@ export const NotificationsPage: React.FC = () => {
           className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-brand-50 text-slate-700 dark:text-slate-300 hover:text-brand-600 rounded-xl text-xs font-semibold transition-colors"
         >
           <CheckCheck className="w-4 h-4" />
-          อ่านทั้งหมดแล้ว
+
+          {t("อ่านทั้งหมดแล้ว")}
         </button>
       </div>
 
       {/* Notifications List */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden shadow-xs">
         {isLoading ? (
-          <div className="py-12 text-center text-xs text-slate-400">กำลังโหลด...</div>
+          <div className="py-12 text-center text-xs text-slate-400">{t("กำลังโหลด...")}</div>
         ) : notifications.length === 0 ? (
-          <div className="py-12 text-center text-xs text-slate-400">ไม่มีการแจ้งเตือน</div>
+          <div className="py-12 text-center text-xs text-slate-400">{t("ไม่มีการแจ้งเตือน")}</div>
         ) : (
           notifications.map((n) => (
             <div
@@ -94,7 +100,7 @@ export const NotificationsPage: React.FC = () => {
                 <p className="text-xs text-slate-600 dark:text-slate-400">{n.message}</p>
                 <div className="text-[11px] text-slate-400 flex items-center gap-1 pt-1">
                   <Clock className="w-3 h-3" />
-                  {new Date(n.created_at).toLocaleString('th-TH')}
+                  {new Date(n.created_at).toLocaleString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH')}
                 </div>
               </div>
 

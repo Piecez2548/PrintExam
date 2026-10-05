@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -22,6 +23,7 @@ interface ToastContextType {
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { t: translate } = useTranslation('common');
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const removeToast = useCallback((id: string) => {
@@ -59,10 +61,10 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const getBorderColor = (type: ToastType) => {
     switch (type) {
-      case 'success': return 'border-emerald-500/30 bg-slate-900/95 text-white';
-      case 'error': return 'border-rose-500/30 bg-slate-900/95 text-white';
-      case 'warning': return 'border-amber-500/30 bg-slate-900/95 text-white';
-      default: return 'border-sky-500/30 bg-slate-900/95 text-white';
+      case 'success': return 'border-emerald-300 bg-white text-slate-900 dark:border-emerald-500/30 dark:bg-slate-900/95 dark:text-white';
+      case 'error': return 'border-rose-300 bg-white text-slate-900 dark:border-rose-500/30 dark:bg-slate-900/95 dark:text-white';
+      case 'warning': return 'border-amber-300 bg-white text-slate-900 dark:border-amber-500/30 dark:bg-slate-900/95 dark:text-white';
+      default: return 'border-sky-300 bg-white text-slate-900 dark:border-sky-500/30 dark:bg-slate-900/95 dark:text-white';
     }
   };
 
@@ -81,11 +83,13 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             {getIcon(t.type)}
             <div className="flex-1 pr-2">
               <div className="font-semibold text-sm leading-tight">{t.title}</div>
-              {t.message && <div className="text-xs text-slate-300 mt-1 leading-relaxed">{t.message}</div>}
+              {t.message && <div className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">{t.message}</div>}
             </div>
             <button
+              type="button"
+              aria-label={translate('Dismiss notification')}
               onClick={() => removeToast(t.id)}
-              className="text-slate-400 hover:text-white p-1 transition-colors"
+              className="rounded p-1 text-slate-500 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:text-white"
             >
               <X className="w-4 h-4" />
             </button>

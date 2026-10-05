@@ -18,26 +18,6 @@ export enum ExamStatus {
   CANCELLED = 'CANCELLED',
 }
 
-export const STATUS_LABELS_TH: Record<ExamStatus, string> = {
-  [ExamStatus.DRAFT]: 'ฉบับร่าง (Draft)',
-  [ExamStatus.SUBMITTED]: 'ส่งแล้ว รอตรวจสอบ',
-  [ExamStatus.REJECTED]: 'ไม่ผ่านตรวจสอบ (ต้องแก้ไข)',
-  [ExamStatus.APPROVED]: 'อนุมัติ / ตัดข้อสอบแล้ว',
-  [ExamStatus.PRINTING]: 'กำลังจัดพิมพ์',
-  [ExamStatus.PRINTED]: 'พิมพ์เสร็จเรียบร้อย',
-  [ExamStatus.PACKED]: 'บรรจุซองเรียบร้อย',
-  [ExamStatus.READY_FOR_PICKUP]: 'พร้อมส่งมอบ',
-  [ExamStatus.DELIVERED]: 'ส่งมอบแล้ว',
-  [ExamStatus.CANCELLED]: 'ยกเลิกรายการแล้ว',
-};
-
-export const ROLE_LABELS_TH: Record<UserRole, string> = {
-  [UserRole.INSTRUCTOR]: 'อาจารย์ผู้สอน (Instructor)',
-  [UserRole.AV_STAFF]: 'เจ้าหน้าที่หน่วยโสต (AV Staff)',
-  [UserRole.COORDINATOR]: 'จนท.ดำเนินการสอบ (Coordinator)',
-  [UserRole.ADMIN]: 'ผู้ดูแลระบบ (Admin)',
-};
-
 export interface User {
   id: number;
   username: string;

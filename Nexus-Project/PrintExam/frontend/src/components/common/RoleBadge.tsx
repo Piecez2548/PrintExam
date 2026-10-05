@@ -1,6 +1,7 @@
 import React from 'react';
-import { UserRole, ROLE_LABELS_TH } from '../../types';
+import { UserRole } from '../../types';
 import { GraduationCap, Printer, CalendarCheck, ShieldCheck } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface RoleBadgeProps {
   role: UserRole | string;
@@ -8,35 +9,36 @@ interface RoleBadgeProps {
 }
 
 export const RoleBadge: React.FC<RoleBadgeProps> = ({ role, size = 'md' }) => {
+  const { t } = useTranslation('common');
   const getRoleConfig = () => {
     switch (role) {
       case UserRole.INSTRUCTOR:
         return {
           bg: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-800',
           icon: <GraduationCap className="w-3.5 h-3.5" />,
-          label: ROLE_LABELS_TH[UserRole.INSTRUCTOR],
+          label: t('role.INSTRUCTOR', { ns: 'statuses' }),
         };
       case UserRole.AV_STAFF:
         return {
           bg: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-800',
           icon: <Printer className="w-3.5 h-3.5" />,
-          label: ROLE_LABELS_TH[UserRole.AV_STAFF],
+          label: t('role.AV_STAFF', { ns: 'statuses' }),
         };
       case UserRole.COORDINATOR:
         return {
           bg: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800',
           icon: <CalendarCheck className="w-3.5 h-3.5" />,
-          label: ROLE_LABELS_TH[UserRole.COORDINATOR],
+          label: t('role.COORDINATOR', { ns: 'statuses' }),
         };
       case UserRole.ADMIN:
         return {
           bg: 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/70 dark:text-purple-300 dark:border-purple-800',
           icon: <ShieldCheck className="w-3.5 h-3.5" />,
-          label: ROLE_LABELS_TH[UserRole.ADMIN],
+          label: t('role.ADMIN', { ns: 'statuses' }),
         };
       default:
         return {
-          bg: 'bg-slate-100 text-slate-700 border-slate-300',
+          bg: 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700',
           icon: null,
           label: role,
         };

@@ -24,15 +24,19 @@ import { NotificationsPage } from './pages/shared/NotificationsPage';
 import { ProfilePage } from './pages/shared/ProfilePage';
 import { NotFoundPage } from './pages/shared/NotFoundPage';
 import { UserRole } from './types';
+import { useTranslation } from 'react-i18next';
 
 // Role-based root redirect helper
 const RootRedirect: React.FC = () => {
+  const { t } = useTranslation("common");
+
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white text-sm">
-        กำลังโหลดระบบ...
+      <div className="min-h-screen flex items-center justify-center bg-surface-secondary text-foreground text-sm">
+
+        {t("กำลังโหลดระบบ...")}
       </div>
     );
   }
@@ -45,12 +49,15 @@ const RootRedirect: React.FC = () => {
 
 // Protected route wrapper
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { t } = useTranslation("common");
+
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white text-sm">
-        กำลังโหลดข้อมูล...
+      <div className="min-h-screen flex items-center justify-center bg-surface-secondary text-foreground text-sm">
+
+        {t("กำลังโหลดข้อมูล...")}
       </div>
     );
   }

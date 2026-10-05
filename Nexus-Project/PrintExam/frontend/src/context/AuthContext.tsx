@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { User, UserRole } from '../types';
 import { authApi, LoginResponse, Verify2FAResponse } from '../api/auth';
 import { useToast } from './ToastContext';
+import { useTranslation } from 'react-i18next';
+import { localizedApiError } from '../api/localizedError';
 
 interface AuthContextType {
   user: User | null;
@@ -22,6 +24,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { t } = useTranslation("common");
+
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const toast = useToast();
@@ -51,7 +55,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const verify2FA = async (tempToken: string, otpCode: string): Promise<Verify2FAResponse> => {
     const res = await authApi.verify2FA(tempToken, otpCode);
     setUser(res.user);
-    toast.success('เข้าสู่ระบบสำเร็จ', `ยินดีต้อนรับ ${res.user.full_name}`);
+    toast.success(t("เข้าสู่ระบบสำเร็จ"), t("ยินดีต้อนรับ {{v0}}", { v0: res.user.full_name }));
     return res;
   };
 
@@ -59,9 +63,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const res = await authApi.quickLogin(role);
       setUser(res.user);
-      toast.success('สลับบทบาทสำเร็จ', `เปลี่ยนเป็น ${res.user.full_name} (${role})`);
+      const roleLabel = t(`role.${role}`, { ns: 'statuses', defaultValue: role });
+      toast.success(t("สลับบทบาทสำเร็จ"), t("เปลี่ยนเป็น {{v0}} ({{v1}})", { v0: res.user.full_name, v1: roleLabel }));
     } catch (err: any) {
-      toast.error('สลับบทบาทล้มเหลว', err.response?.data?.message || 'เกิดข้อผิดพลาด');
+      toast.error(t("สลับบทบาทล้มเหลว"), localizedApiError(err, t('An unexpected error occurred.')));
     }
   };
 
@@ -72,7 +77,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Local sign-out still succeeds if the server session already expired.
     }
     setUser(null);
-    toast.info('ออกจากระบบเรียบร้อย');
+    toast.info(t("ออกจากระบบเรียบร้อย"));
   };
 
   const updateCurrentUser = (nextUser: User) => {

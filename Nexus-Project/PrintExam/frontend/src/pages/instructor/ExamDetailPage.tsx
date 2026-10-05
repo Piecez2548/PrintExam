@@ -24,8 +24,13 @@ import {
   FileCheck,
   Send,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
+import { localizedApiError } from '../../api/localizedError';
 
 export const ExamDetailPage: React.FC = () => {
+  const { t } = useTranslation("instructor");
+
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const toast = useToast();
@@ -57,7 +62,7 @@ export const ExamDetailPage: React.FC = () => {
       setEditDoubleSided(Boolean(data.is_double_sided));
       setEditInstructions(data.special_instructions || '');
     } catch (err: any) {
-      toast.error('ไม่สามารถโหลดข้อมูลข้อสอบได้', err.response?.data?.message);
+      toast.error(t("ไม่สามารถโหลดข้อมูลข้อสอบได้"), localizedApiError(err, t('An unexpected error occurred.')));
     } finally {
       setIsLoading(false);
     }
@@ -84,11 +89,11 @@ export const ExamDetailPage: React.FC = () => {
       }
 
       await examsApi.updateExam(id, formData);
-      toast.success('แก้ไขข้อสอบเรียบร้อยแล้ว', 'ส่งข้อสอบให้เจ้าหน้าที่ตรวจสอบใหม่อีกครั้ง');
+      toast.success(t("แก้ไขข้อสอบเรียบร้อยแล้ว"), t("ส่งข้อสอบให้เจ้าหน้าที่ตรวจสอบใหม่อีกครั้ง"));
       setIsEditModalOpen(false);
       fetchExam();
     } catch (err: any) {
-      toast.error('แก้ไขไม่สำเร็จ', err.response?.data?.message || 'เกิดข้อผิดพลาด');
+      toast.error(t("แก้ไขไม่สำเร็จ"), localizedApiError(err, t('An unexpected error occurred.')));
     } finally {
       setIsSaving(false);
     }
@@ -96,30 +101,31 @@ export const ExamDetailPage: React.FC = () => {
 
   const handleCancelExam = async () => {
     if (!id) return;
-    if (!window.confirm('คุณต้องการยกเลิกข้อสอบชุดนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
+    if (!window.confirm(t("คุณต้องการยกเลิกข้อสอบชุดนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้"))) {
       return;
     }
 
     try {
       await examsApi.deleteExam(id);
-      toast.success('ยกเลิกข้อสอบเรียบร้อยแล้ว');
+      toast.success(t("ยกเลิกข้อสอบเรียบร้อยแล้ว"));
       navigate('/instructor/dashboard');
     } catch (err: any) {
-      toast.error('ไม่สามารถยกเลิกได้', err.response?.data?.message);
+      toast.error(t("ไม่สามารถยกเลิกได้"), localizedApiError(err, t('An unexpected error occurred.')));
     }
   };
 
   if (isLoading) {
-    return <div className="py-12 text-center text-slate-400">กำลังโหลดรายละเอียดข้อสอบ...</div>;
+    return <div className="py-12 text-center text-slate-400">{t("กำลังโหลดรายละเอียดข้อสอบ...")}</div>;
   }
 
   if (!exam) {
     return (
-      <div className="py-12 text-center text-slate-500">
+      <div className="py-12 text-center text-slate-500 dark:text-slate-400">
         <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-2" />
-        <div>ไม่พบข้อมูลข้อสอบ</div>
+        <div>{t("ไม่พบข้อมูลข้อสอบ")}</div>
         <Link to="/instructor/dashboard" className="text-xs text-brand-600 underline mt-2 inline-block">
-          กลับไปที่แดชบอร์ด
+
+          {t("กลับไปที่แดชบอร์ด")}
         </Link>
       </div>
     );
@@ -132,19 +138,20 @@ export const ExamDetailPage: React.FC = () => {
         <div className="flex items-center gap-3">
           <Link
             to="/instructor/dashboard"
-            className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 hover:text-slate-900 transition-colors"
+            className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-                ข้อสอบวิชา {exam.course_code} - {exam.course_name}
+
+                {t("ข้อสอบวิชา")} {exam.course_code} - {exam.course_name}
               </h1>
               <StatusBadge status={exam.status} size="md" />
             </div>
             <div className="text-xs text-slate-400 mt-0.5">
-              Ref ID: #{exam.id} | สร้างเมื่อ: {new Date(exam.created_at).toLocaleString('th-TH')}
+              {t('Ref ID:')} #{exam.id}  {t("| สร้างเมื่อ:")} {new Date(exam.created_at).toLocaleString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH')}
             </div>
           </div>
         </div>
@@ -157,7 +164,8 @@ export const ExamDetailPage: React.FC = () => {
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 transition-colors shadow-xs"
           >
             <FileCheck className="w-4 h-4 text-brand-500" />
-            ดูใบปะหน้าซอง
+
+            {t("ดูใบปะหน้าซอง")}
           </button>
 
           {/* Edit Button */}
@@ -172,7 +180,8 @@ export const ExamDetailPage: React.FC = () => {
             }`}
           >
             <Edit className="w-3.5 h-3.5" />
-            แก้ไขข้อสอบ
+
+            {t("แก้ไขข้อสอบ")}
           </button>
 
           {/* Cancel Button */}
@@ -187,7 +196,8 @@ export const ExamDetailPage: React.FC = () => {
             }`}
           >
             <Trash2 className="w-3.5 h-3.5" />
-            ยกเลิก
+
+            {t("ยกเลิก")}
           </button>
         </div>
       </div>
@@ -198,20 +208,24 @@ export const ExamDetailPage: React.FC = () => {
           <AlertCircle className="w-6 h-6 text-rose-600 shrink-0 mt-0.5" />
           <div className="flex-1">
             <h3 className="font-extrabold text-sm text-rose-800 dark:text-rose-200">
-              ข้อสอบไม่ผ่านการตรวจสอบ
+
+              {t("ข้อสอบไม่ผ่านการตรวจสอบ")}
             </h3>
             <p className="text-xs sm:text-sm text-rose-700 dark:text-rose-300 mt-1 font-medium leading-relaxed">
-              สาเหตุ: <strong>{exam.rejection_reason || 'ไฟล์ไม่สมบูรณ์ หรือข้อมูลไม่ครบถ้วน'}</strong>
+
+              {t("สาเหตุ:")} <strong>{exam.rejection_reason || t("ไฟล์ไม่สมบูรณ์ หรือข้อมูลไม่ครบถ้วน")}</strong>
             </p>
             <p className="text-xs text-rose-600 dark:text-rose-400 mt-2">
-              กรุณาแก้ไขไฟล์ข้อสอบตามข้อเสนอแนะด้านบน แล้วกดปุ่ม <strong>"แก้ไขข้อสอบ"</strong> เพื่อส่งใหม่อีกครั้ง
+
+              {t("กรุณาแก้ไขไฟล์ข้อสอบตามข้อเสนอแนะด้านบน แล้วกดปุ่ม")} <strong>{t("\"แก้ไขข้อสอบ\"")}</strong>  {t("เพื่อส่งใหม่อีกครั้ง")}
             </p>
           </div>
           <button
             onClick={() => setIsEditModalOpen(true)}
             className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-600/20 shrink-0"
           >
-            แก้ไขและส่งใหม่
+
+            {t("แก้ไขและส่งใหม่")}
           </button>
         </div>
       )}
@@ -227,37 +241,39 @@ export const ExamDetailPage: React.FC = () => {
         {/* Course & Schedule Details */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-4">
           <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 pb-2">
-            ข้อมูลรายวิชาและวันสอบ
+
+            {t("ข้อมูลรายวิชาและวันสอบ")}
           </h2>
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
-              <span className="text-slate-400">รหัสวิชา:</span>
+              <span className="text-slate-400">{t("รหัสวิชา:")}</span>
               <div className="font-bold text-slate-800 dark:text-slate-200 text-sm">{exam.course_code}</div>
             </div>
             <div>
-              <span className="text-slate-400">ชื่อรายวิชา:</span>
+              <span className="text-slate-400">{t("ชื่อรายวิชา:")}</span>
               <div className="font-bold text-slate-800 dark:text-slate-200">{exam.course_name}</div>
             </div>
             <div>
-              <span className="text-slate-400">ภาคการศึกษา:</span>
+              <span className="text-slate-400">{t("ภาคการศึกษา:")}</span>
               <div className="font-medium text-slate-700 dark:text-slate-300">
-                ภาค {exam.semester} / {exam.academic_year}
+
+                {t("ภาค")} {exam.semester} / {exam.academic_year}
               </div>
             </div>
             <div>
-              <span className="text-slate-400">อาจารย์ผู้สอน:</span>
+              <span className="text-slate-400">{t("อาจารย์ผู้สอน:")}</span>
               <div className="font-medium text-slate-700 dark:text-slate-300">{exam.instructor_name}</div>
             </div>
             <div>
-              <span className="text-slate-400">วันสอบ:</span>
+              <span className="text-slate-400">{t("วันสอบ:")}</span>
               <div className="font-bold text-slate-800 dark:text-slate-200">
-                {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString('th-TH') : 'ตามตารางสอบ'}
+                {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH') : t("ตามตารางสอบ")}
               </div>
             </div>
             <div>
-              <span className="text-slate-400">เวลา & ห้องสอบ:</span>
+              <span className="text-slate-400">{t("เวลา & ห้องสอบ:")}</span>
               <div className="font-bold text-brand-600">
-                {exam.start_time && exam.end_time ? `${exam.start_time}-${exam.end_time} น.` : ''} @ {exam.room || 'ตามตาราง'}
+                {exam.start_time && exam.end_time ? t("{{v0}}-{{v1}} น.", { v0: exam.start_time, v1: exam.end_time }) : ''} @ {exam.room || t("ตามตาราง")}
               </div>
             </div>
           </div>
@@ -266,48 +282,50 @@ export const ExamDetailPage: React.FC = () => {
         {/* Printing Specs Details */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs space-y-4">
           <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 pb-2">
-            รายละเอียดการจัดพิมพ์
+
+            {t("รายละเอียดการจัดพิมพ์")}
           </h2>
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
-              <span className="text-slate-400">จำนวนที่สั่งพิมพ์:</span>
+              <span className="text-slate-400">{t("จำนวนที่สั่งพิมพ์:")}</span>
               <div className="font-extrabold text-emerald-600 text-base">
-                {exam.num_copies > 0 ? `${exam.num_copies} ชุด` : 'ยังไม่ระบุ'}
+                {exam.num_copies > 0 ? t("{{v0}} ชุด", { v0: exam.num_copies }) : t("ยังไม่ระบุ")}
               </div>
             </div>
             <div>
-              <span className="text-slate-400">จำนวนหน้า/ชุด:</span>
-              <div className="font-bold text-slate-800 dark:text-slate-200">{exam.num_pages || 1} หน้า</div>
+              <span className="text-slate-400">{t("จำนวนหน้า/ชุด:")}</span>
+              <div className="font-bold text-slate-800 dark:text-slate-200">{exam.num_pages || 1}  {t("หน้า")}</div>
             </div>
             <div>
-              <span className="text-slate-400">รูปแบบการพิมพ์:</span>
+              <span className="text-slate-400">{t("รูปแบบการพิมพ์:")}</span>
               <div className="font-medium text-slate-700 dark:text-slate-300">
-                {exam.is_double_sided ? 'หน้า-หลัง (Double)' : 'หน้าเดียว (Single)'} [{exam.paper_size}]
+                {exam.is_double_sided ? t("หน้า-หลัง (Double)") : t("หน้าเดียว (Single)")} [{exam.paper_size}]
               </div>
             </div>
             <div>
-              <span className="text-slate-400">ไฟล์ข้อสอบ:</span>
+              <span className="text-slate-400">{t("ไฟล์ข้อสอบ:")}</span>
               {exam.file_url ? (
                 <button
                   type="button"
                   onClick={() =>
                     void downloadAuthenticatedResource(exam.file_url!, exam.original_filename || `exam-${exam.id}`)
-                      .catch(() => toast.error('ดาวน์โหลดไม่สำเร็จ', 'ไม่สามารถดาวน์โหลดไฟล์ข้อสอบได้'))
+                      .catch(() => toast.error(t("ดาวน์โหลดไม่สำเร็จ"), t("ไม่สามารถดาวน์โหลดไฟล์ข้อสอบได้")))
                   }
                   className="font-semibold text-brand-600 hover:underline flex items-center gap-1 mt-0.5"
                 >
                   <Download className="w-3 h-3" />
-                  ดาวน์โหลดไฟล์
+
+                  {t("ดาวน์โหลดไฟล์")}
                 </button>
               ) : (
-                <div className="text-slate-400">ไม่มีไฟล์</div>
+                <div className="text-slate-400">{t("ไม่มีไฟล์")}</div>
               )}
             </div>
           </div>
 
           {exam.special_instructions && (
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
-              <span className="text-slate-400">คำสั่งพิมพ์พิเศษ:</span>
+              <span className="text-slate-400">{t("คำสั่งพิมพ์พิเศษ:")}</span>
               <p className="font-medium text-slate-700 dark:text-slate-300 italic mt-0.5">
                 "{exam.special_instructions}"
               </p>
@@ -320,12 +338,13 @@ export const ExamDetailPage: React.FC = () => {
       <Modal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
-        title="แก้ไขข้อมูลข้อสอบ"
+        title={t("แก้ไขข้อมูลข้อสอบ")}
       >
         <form onSubmit={handleEditSubmit} className="space-y-4 text-xs">
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              จำนวนชุดที่ต้องการพิมพ์ *
+
+              {t("จำนวนชุดที่ต้องการพิมพ์ *")}
             </label>
             <input
               type="number"
@@ -339,7 +358,8 @@ export const ExamDetailPage: React.FC = () => {
 
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              จำนวนหน้าต่อชุด
+
+              {t("จำนวนหน้าต่อชุด")}
             </label>
             <input
               type="number"
@@ -352,7 +372,8 @@ export const ExamDetailPage: React.FC = () => {
 
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              คำสั่งพิเศษ
+
+              {t("คำสั่งพิเศษ")}
             </label>
             <textarea
               rows={2}
@@ -364,7 +385,8 @@ export const ExamDetailPage: React.FC = () => {
 
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              อัปโหลดไฟล์ใหม่ (ถ้าต้องการเปลี่ยนไฟล์ .docx / .pdf)
+
+              {t("อัปโหลดไฟล์ใหม่ (ถ้าต้องการเปลี่ยนไฟล์ .docx / .pdf)")}
             </label>
             <input
               type="file"
@@ -374,7 +396,7 @@ export const ExamDetailPage: React.FC = () => {
                   setEditFile(e.target.files[0]);
                 }
               }}
-              className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
+              className="block w-full text-xs text-slate-500 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
             />
           </div>
 
@@ -382,16 +404,17 @@ export const ExamDetailPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsEditModalOpen(false)}
-              className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-semibold"
+              className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 dark:text-slate-300 font-semibold"
             >
-              ยกเลิก
+
+              {t("ยกเลิก")}
             </button>
             <button
               type="submit"
               disabled={isSaving}
               className="px-5 py-2 rounded-xl bg-brand-600 text-white font-bold hover:bg-brand-700 transition-colors shadow-sm"
             >
-              {isSaving ? 'กำลังบันทึก...' : 'บันทึกและส่งตรวจสอบใหม่'}
+              {isSaving ? t("กำลังบันทึก...") : t("บันทึกและส่งตรวจสอบใหม่")}
             </button>
           </div>
         </form>
