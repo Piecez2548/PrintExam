@@ -403,7 +403,7 @@ export const ReportsPage: React.FC = () => {
                       <div className="font-medium text-slate-800 dark:text-slate-200">{row.instructor_name}</div>
                       <div className="text-[11px] text-slate-400">{row.instructor_department}</div>
                     </td>
-                    <td className="py-3.5 px-4 font-bold text-rose-600">
+                    <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-200">
                       {row.room || '-'}
                     </td>
                     <td className="py-3.5 px-4 font-black text-slate-800 dark:text-slate-200">
