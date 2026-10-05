@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarCheck, Clock3, FileUp, Info, Printer, Save, Send } from 'lucide-react';
+import { CalendarCheck, ChevronDown, Clock3, FileUp, Info, Printer, Save, Send } from 'lucide-react';
 import { examsApi } from '../../api/exams';
 import { coursesApi } from '../../api/courses';
 import { schedulesApi } from '../../api/schedules';
@@ -28,6 +28,7 @@ export const ExamCreatePage: React.FC = () => {
   const [allSchedules, setAllSchedules] = useState<ExamSchedule[]>([]);
   const [schedules, setSchedules] = useState<ExamSchedule[]>([]);
   const [loadingSchedules, setLoadingSchedules] = useState(true);
+  const [unavailableCoursesExpanded, setUnavailableCoursesExpanded] = useState(false);
   const [scheduleId, setScheduleId] = useState('');
   const [studentCount, setStudentCount] = useState(1);
   const [reserveCopies, setReserveCopies] = useState(2);
@@ -172,12 +173,18 @@ export const ExamCreatePage: React.FC = () => {
 
         {!loadingSchedules && unavailableCourses.length > 0 && (
           <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
-            <div className="flex items-center gap-2 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              <Clock3 className="h-4 w-4 text-amber-500" />
-
-              {t("รายวิชาที่เพิ่มแล้วแต่ยังเลือกส่งไม่ได้ (")}{unavailableCourses.length})
-            </div>
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            <button
+              type="button"
+              aria-expanded={unavailableCoursesExpanded}
+              aria-controls="unavailable-courses-list"
+              onClick={() => setUnavailableCoursesExpanded((expanded) => !expanded)}
+              className="flex w-full items-center gap-2 bg-slate-50 px-3 py-2 text-left text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              <Clock3 className="h-4 w-4 shrink-0 text-amber-500" />
+              <span className="min-w-0 flex-1">{t("รายวิชาที่เพิ่มแล้วแต่ยังเลือกส่งไม่ได้ (")}{unavailableCourses.length})</span>
+              <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${unavailableCoursesExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </button>
+            <div id="unavailable-courses-list" hidden={!unavailableCoursesExpanded} className="divide-y divide-slate-100 dark:divide-slate-800">
               {unavailableCourses.map(({ course, reason }) => (
                 <div key={course.id} className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                   <div>
