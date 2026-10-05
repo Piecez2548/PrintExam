@@ -37,6 +37,110 @@ function getExam(server: Server, token: string): Promise<{ status: number; body:
   });
 }
 
+function updateExam(server: Server, token: string, fields: Record<string, string>): Promise<{ status: number; body: AnyRecord }> {
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  const boundary = '----PrintExamAuditRegressionBoundary';
+  const body = `${Object.entries(fields).map(([name, value]) => `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`).join('')}--${boundary}--\r\n`;
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({
+      hostname: '127.0.0.1',
+      port: address.port,
+      path: '/api/exams/41',
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': Buffer.byteLength(body),
+      },
+    }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('end', () => resolve({
+        status: response.statusCode || 0,
+        body: chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {},
+      }));
+    });
+    request.on('error', reject);
+    request.end(body);
+  });
+}
+
+async function setupExamUpdate(t: import('node:test').TestContext) {
+  const [{ default: examRoutes }, { prisma }, { JWT_SECRET }, { UserRole, ExamStatus }] = await Promise.all([
+    import('./examRoutes'),
+    import('../database/prisma'),
+    import('../config/constants'),
+    import('../../generated/prisma'),
+  ]);
+  const instructor = {
+    id: 10,
+    username: 'qa-instructor',
+    fullName: 'QA Instructor',
+    email: 'qa-instructor@example.test',
+    role: UserRole.INSTRUCTOR,
+    department: 'QA',
+    phone: null,
+    officeRoom: null,
+    isActive: true,
+    mustChangePassword: false,
+    sessionVersion: 0,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  };
+  const persisted: AnyRecord = {
+    id: 41,
+    courseId: 52,
+    scheduleId: null,
+    status: ExamStatus.DRAFT,
+    createdById: instructor.id,
+    deadlineAt: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000),
+    submittedAt: null,
+    fileUrl: '/uploads/existing.pdf',
+    originalFilename: 'existing.pdf',
+    fileType: 'application/pdf',
+    fileSize: 100,
+    numCopies: 2,
+    studentCount: 1,
+    reserveCopies: 1,
+    section: '01',
+    numPages: 2,
+    examLanguage: 'THAI',
+    printFormat: 'DOUBLE_SIDED',
+    allowedMaterials: null,
+    requiresAnswerSheet: false,
+    examSessionType: 'IN_SCHEDULE',
+    specialInstructions: null,
+    isDoubleSided: true,
+    paperSize: 'A4',
+  };
+  const audits: AnyRecord[] = [];
+  const tx = {
+    exam: {
+      findUnique: async () => ({ ...persisted }),
+      update: async ({ data }: AnyRecord) => {
+        for (const [key, value] of Object.entries(data)) if (value !== undefined) persisted[key] = value;
+        return { ...persisted };
+      },
+    },
+    auditLog: { create: async ({ data }: AnyRecord) => { audits.push(data); return data; } },
+    examStatusHistory: { create: async () => ({}) },
+  };
+  const restoreUser = stubMethod(prisma.user, 'findUnique', async () => instructor);
+  const restoreExam = stubMethod(prisma.exam, 'findUnique', async () => ({ ...persisted }));
+  const restoreTransaction = stubMethod(prisma, '$transaction', async (operation: any) => operation(tx));
+  t.after(restoreUser);
+  t.after(restoreExam);
+  t.after(restoreTransaction);
+
+  const app = express();
+  app.use('/api/exams', examRoutes);
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const token = jwt.sign({ id: instructor.id, username: instructor.username, sessionVersion: 0 }, JWT_SECRET);
+  return { server, token, persisted, audits, instructor };
+}
+
 process.env.JWT_SECRET ||= 'test-only-secret-that-is-long-enough-for-local-tests';
 
 test('date-only deadline remains open through 23:59 Thailand time', async () => {
@@ -166,6 +270,79 @@ test('audit metadata redacts credential-like values and sensitive nested keys', 
   assert.deepEqual(parseAuditChanges(JSON.stringify({ audit_version: 1, changes: { room: { before: 'A', after: 'B' }, password: { before: 'x', after: 'y' } } })), {
     room: { before: 'A', after: 'B' },
   });
+});
+
+test('exam edit changing only num_copies preserves student_count, reserve_copies, and unset instructions', async (t) => {
+  const state = await setupExamUpdate(t);
+  const response = await updateExam(state.server, state.token, { num_copies: '333' });
+
+  assert.equal(response.status, 200);
+  assert.equal(state.persisted.numCopies, 333);
+  assert.equal(state.persisted.studentCount, 1);
+  assert.equal(state.persisted.reserveCopies, 1);
+  assert.equal(state.persisted.specialInstructions, null);
+  assert.equal(state.audits.length, 1);
+  assert.equal(state.audits[0].userId, state.instructor.id);
+  assert.equal(state.audits[0].userRole, 'INSTRUCTOR');
+  const details = JSON.parse(state.audits[0].detailJson);
+  assert.deepEqual(details.changes, { num_copies: { before: 2, after: 333 } });
+});
+
+test('exam edit changing only student_count records only student_count', async (t) => {
+  const state = await setupExamUpdate(t);
+  const response = await updateExam(state.server, state.token, { student_count: '8' });
+
+  assert.equal(response.status, 200);
+  assert.equal(state.persisted.numCopies, 2);
+  assert.equal(state.persisted.studentCount, 8);
+  assert.equal(state.persisted.reserveCopies, 1);
+  assert.deepEqual(JSON.parse(state.audits[0].detailJson).changes, {
+    student_count: { before: 1, after: 8 },
+  });
+});
+
+test('exam edit changing only reserve_copies preserves student count and copies', async (t) => {
+  const state = await setupExamUpdate(t);
+  const response = await updateExam(state.server, state.token, { reserve_copies: '4' });
+
+  assert.equal(response.status, 200);
+  assert.equal(state.persisted.numCopies, 2);
+  assert.equal(state.persisted.studentCount, 1);
+  assert.equal(state.persisted.reserveCopies, 4);
+  assert.deepEqual(JSON.parse(state.audits[0].detailJson).changes, {
+    reserve_copies: { before: 1, after: 4 },
+  });
+});
+
+test('exam edit changing copies and student count records exactly both persisted fields', async (t) => {
+  const state = await setupExamUpdate(t);
+  const response = await updateExam(state.server, state.token, { num_copies: '5', student_count: '4' });
+
+  assert.equal(response.status, 200);
+  assert.equal(state.persisted.numCopies, 5);
+  assert.equal(state.persisted.studentCount, 4);
+  assert.deepEqual(JSON.parse(state.audits[0].detailJson).changes, {
+    num_copies: { before: 2, after: 5 },
+    student_count: { before: 1, after: 4 },
+  });
+});
+
+test('blank optional instructions normalize to null and do not create a phantom audit event', async (t) => {
+  const state = await setupExamUpdate(t);
+  const response = await updateExam(state.server, state.token, { special_instructions: '' });
+
+  assert.equal(response.status, 200);
+  assert.equal(state.persisted.specialInstructions, null);
+  assert.equal(state.audits.length, 0);
+});
+
+test('audit comparison suppresses equivalent empty optional values but preserves meaningful empty values elsewhere', async () => {
+  const { buildAuditChanges } = await import('../data/auditTrail');
+  assert.deepEqual(buildAuditChanges(
+    { special_instructions: null, allowed_materials: undefined, course_name: '' },
+    { special_instructions: '', allowed_materials: null, course_name: 'Course' },
+    ['special_instructions', 'allowed_materials', 'course_name']
+  ), { course_name: { before: '', after: 'Course' } });
 });
 
 test('exam detail refetch returns persisted audit events newest first with authenticated actors', async (t) => {

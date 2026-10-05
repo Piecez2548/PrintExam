@@ -3,6 +3,7 @@ import { ExamStatus, ExamAuditTrailItem, ExamStatusHistory } from '../../types';
 import { CheckCircle2, Clock, XCircle, ChevronRight, User, Calendar } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
+import { formatAuditValue, getAuditFieldLabel, getAuditRoleLabel, getAuditTitle, getVisibleAuditChanges } from '../../utils/auditPresentation';
 
 interface StatusTimelineProps {
   currentStatus: ExamStatus;
@@ -21,23 +22,7 @@ const STEPS = [
 export const StatusTimeline: React.FC<StatusTimelineProps> = ({ currentStatus, history = [] }) => {
   const { t } = useTranslation("common");
 
-  const formatAuditValue = (value: unknown): string => {
-    if (value === null || value === undefined || value === '') return t('audit.valueNotSet');
-    if (typeof value === 'boolean') return value ? t('audit.enabled') : t('audit.disabled');
-    if (typeof value === 'object') {
-      const file = value as { name?: unknown; type?: unknown; size?: unknown };
-      if ('name' in file || 'type' in file || 'size' in file) {
-        const name = file.name ? String(file.name) : t('audit.valueNotSet');
-        const details = [file.type, file.size !== null && file.size !== undefined ? `${file.size} bytes` : null]
-          .filter(Boolean)
-          .map(String)
-          .join(', ');
-        return details ? `${name} (${details})` : name;
-      }
-      return JSON.stringify(value);
-    }
-    return String(value);
-  };
+  const language: 'th' | 'en' = i18n.resolvedLanguage === 'en' ? 'en' : 'th';
 
   const getStepIndex = (status: ExamStatus): number => {
     switch (status) {
@@ -123,12 +108,11 @@ export const StatusTimeline: React.FC<StatusTimelineProps> = ({ currentStatus, h
             {history.map((h) => {
               const isDataEdit = 'event_type' in h && h.event_type === 'DATA_EDIT';
               const actionTitle = isDataEdit
-                ? h.entity_type === 'SCHEDULE'
-                  ? t('audit.scheduleUpdated')
-                  : h.entity_type === 'COURSE'
-                    ? t('audit.courseUpdated')
-                    : t('audit.examUpdated')
+                ? getAuditTitle(h.entity_type || 'EXAM', t, language)
                 : t(`status.${h.to_status}`, { ns: 'statuses', defaultValue: h.to_status });
+              const visibleChanges = isDataEdit && 'changes' in h && h.changes
+                ? getVisibleAuditChanges(h.changes)
+                : [];
               return (
               <div key={`${'event_type' in h ? h.event_type : 'STATUS_CHANGE'}-${h.id}`} className="flex items-start gap-3 text-xs">
                 <div className="w-2 h-2 rounded-full bg-brand-500 mt-1.5 shrink-0" />
@@ -140,12 +124,12 @@ export const StatusTimeline: React.FC<StatusTimelineProps> = ({ currentStatus, h
                       {new Date(h.action_at).toLocaleString(i18n.resolvedLanguage === 'en' ? 'en-US' : 'th-TH')}
                     </span>
                   </div>
-                  {isDataEdit && 'changes' in h && h.changes && (
+                  {visibleChanges.length > 0 && (
                     <div className="mt-2 space-y-1.5 text-slate-600 dark:text-slate-300">
-                      {Object.entries(h.changes).map(([field, change]) => (
+                      {visibleChanges.map(([field, change]) => (
                         <div key={field} className="break-words">
-                          <span className="font-semibold">{t(`audit.fields.${field}`, { defaultValue: field })}: </span>
-                          <span>{formatAuditValue(change.before)} → {formatAuditValue(change.after)}</span>
+                          <span className="font-semibold">{getAuditFieldLabel(field, t, language)}: </span>
+                          <span>{formatAuditValue(change.before, t, language, field)} → {formatAuditValue(change.after, t, language, field)}</span>
                         </div>
                       ))}
                     </div>
@@ -153,7 +137,7 @@ export const StatusTimeline: React.FC<StatusTimelineProps> = ({ currentStatus, h
                   {!isDataEdit && h.note && <div className="text-slate-600 dark:text-slate-300 mt-1">{h.note}</div>}
                   <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
                     <User className="w-3 h-3" />
-                    <span>{t("ผู้ดำเนินการ:")} {h.action_name}{h.action_role ? ` (${t(`roles.${h.action_role}`, { defaultValue: h.action_role })})` : ''}</span>
+                    <span>{t("ผู้ดำเนินการ:")} {h.action_name}{h.action_role ? ` (${getAuditRoleLabel(h.action_role, t, language)})` : ''}</span>
                   </div>
                 </div>
               </div>
