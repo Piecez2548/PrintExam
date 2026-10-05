@@ -1,5 +1,5 @@
 export const APPROVED_PAPER_SIZES = ['A4'] as const;
-export const APPROVED_PAPER_WEIGHTS = ['80gsm'] as const;
+export const APPROVED_PAPER_WEIGHTS = ['80gsm', '100gsm'] as const;
 
 export type ApprovedPaperWeight = typeof APPROVED_PAPER_WEIGHTS[number];
 

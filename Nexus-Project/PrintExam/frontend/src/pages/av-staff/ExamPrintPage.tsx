@@ -19,7 +19,13 @@ import {
 import { useTranslation } from 'react-i18next';
 import { localizedApiError } from '../../api/localizedError';
 import i18n from '../../i18n';
-import { APPROVED_PAPER_WEIGHTS, type ApprovedPaperWeight } from '../../utils/paperPrintSpecification';
+import {
+  APPROVED_PAPER_WEIGHTS,
+  DEFAULT_PAPER_WEIGHT,
+  formatPaperPrintPreview,
+  PAPER_WEIGHT_LABEL_KEYS,
+  type ApprovedPaperWeight,
+} from '../../utils/paperPrintSpecification';
 
 export const ExamPrintPage: React.FC = () => {
   const { t } = useTranslation("avStaff");
@@ -33,7 +39,7 @@ export const ExamPrintPage: React.FC = () => {
 
   // Print record state (REQ-0009)
   const [printedCopies, setPrintedCopies] = useState<number>(0);
-  const [paperWeight, setPaperWeight] = useState<ApprovedPaperWeight>(APPROVED_PAPER_WEIGHTS[0]);
+  const [paperWeight, setPaperWeight] = useState<ApprovedPaperWeight>(DEFAULT_PAPER_WEIGHT);
   const [notes, setNotes] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -200,17 +206,16 @@ export const ExamPrintPage: React.FC = () => {
 
             <div>
               <label htmlFor="paper-weight" className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                {t('น้ำหนัก/ชนิดกระดาษ')}
+                {t('น้ำหนักกระดาษ')}
               </label>
               <select
                 id="paper-weight"
                 value={paperWeight}
                 onChange={(e) => setPaperWeight(e.target.value as ApprovedPaperWeight)}
-                disabled={APPROVED_PAPER_WEIGHTS.length === 1}
-                className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-medium disabled:cursor-default disabled:opacity-100"
+                className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 font-medium"
               >
                 {APPROVED_PAPER_WEIGHTS.map((weight) => (
-                  <option key={weight} value={weight}>{weight}</option>
+                  <option key={weight} value={weight}>{t(PAPER_WEIGHT_LABEL_KEYS[weight])}</option>
                 ))}
               </select>
             </div>
@@ -233,7 +238,11 @@ export const ExamPrintPage: React.FC = () => {
           <div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 dark:border-teal-900 dark:bg-teal-950/30">
             <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">{t('ตัวอย่างสเปกการพิมพ์')}</div>
             <div className="mt-1 font-bold text-slate-800 dark:text-slate-100">
-              {exam.paper_size || t('ไม่ระบุ')} • {paperWeight} • {exam.is_double_sided ? t('Double-sided') : t('Single-sided')}
+              {formatPaperPrintPreview(
+                exam.paper_size || t('ไม่ระบุ'),
+                paperWeight,
+                exam.is_double_sided ? t('Double-sided') : t('Single-sided'),
+              )}
             </div>
           </div>
 
