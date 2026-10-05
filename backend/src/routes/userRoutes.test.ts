@@ -79,7 +79,7 @@ function send(
   });
 }
 
-async function setup(t: TestContext, options: { retained?: Record<string, number>; targetExists?: boolean; notificationCount?: number; failAudit?: boolean } = {}) {
+async function setup(t: TestContext, options: { retained?: Record<string, number>; targetExists?: boolean; notificationCount?: number; failAudit?: boolean; createRaceConflict?: 'username' | 'email' } = {}) {
   const [{ default: userRoutes }, { default: authRoutes }, { prisma }, { UserRole }, { auditMiddleware }] = await Promise.all([
     import('./userRoutes'),
     import('./authRoutes'),
@@ -100,6 +100,7 @@ async function setup(t: TestContext, options: { retained?: Record<string, number
   let notificationDeleteCalls = 0;
   let deletedIds: number[] = [];
   let auditCreates: AnyRecord[] = [];
+  let createRaceTriggered = false;
 
   stubMethod(t, prisma.user, 'findUnique', async ({ where }: AnyRecord) => users.get(where.id) || null);
   stubMethod(t, prisma.user, 'findFirst', async ({ where }: AnyRecord) => {
@@ -112,14 +113,27 @@ async function setup(t: TestContext, options: { retained?: Record<string, number
       ));
       return activeMatch || null;
     }
-    const usernameQuery = where?.OR?.find((clause: AnyRecord) => clause.username)?.username?.equals;
-    const emailQuery = where?.OR?.find((clause: AnyRecord) => clause.email)?.email?.equals;
+    const usernameQuery = where?.username?.equals ?? where?.OR?.find((clause: AnyRecord) => clause.username)?.username?.equals;
+    const emailQuery = where?.email?.equals ?? where?.OR?.find((clause: AnyRecord) => clause.email)?.email?.equals;
     return [...users.values()].find((user) =>
       (usernameQuery && user.username.toLowerCase() === String(usernameQuery).toLowerCase())
       || (emailQuery && user.email.toLowerCase() === String(emailQuery).toLowerCase())
     ) || null;
   });
   stubMethod(t, prisma.user, 'create', async ({ data }: AnyRecord) => {
+    if (options.createRaceConflict && !createRaceTriggered) {
+      createRaceTriggered = true;
+      const concurrentUser: AnyRecord = {
+        ...makeUser(nextUserId, data.role),
+        username: options.createRaceConflict === 'username' ? data.username : `race-user-${nextUserId}`,
+        email: options.createRaceConflict === 'email' ? data.email : `race-${nextUserId}@example.test`,
+      };
+      users.set(concurrentUser.id, concurrentUser);
+      throw Object.assign(new Error('unique constraint'), {
+        code: 'P2002',
+        meta: { target: [options.createRaceConflict] },
+      });
+    }
     const user = {
       ...makeUser(nextUserId, data.role),
       ...data,
@@ -241,8 +255,17 @@ test('ADMIN can create every supported role with normalized ASCII username, phon
     assert.equal(result.body.data.username, `qa.user_${index + 1}-x`);
     assert.equal(result.body.data.role, role);
     assert.equal(result.body.data.phone, '081-234-5678');
+    assert.equal(result.body.data.is_active, true);
     assert.equal(state.createdUsers[index].mustChangePassword, true);
+    assert.equal(state.createdUsers[index].deletedAt, null);
+    assert.equal(state.createdUsers[index].officeRoom, null);
+    assert.match(state.createdUsers[index].passwordHash, /^\$2[aby]\$\d{2}\$/);
     assert.equal(bcrypt.compareSync('Valid@Password123', state.createdUsers[index].passwordHash), true);
+    const createAudit = state.auditCreates().find((entry) =>
+      entry.action === 'CREATE_USER' && entry.entityId === String(state.createdUsers[index].id));
+    assert.ok(createAudit);
+    assert.equal(createAudit.userId, state.admin.id);
+    assert.equal(createAudit.userRole, state.admin.role);
   }
 
   const numericUsername = await state.postUser({
@@ -266,6 +289,8 @@ test('ADMIN can create every supported role with normalized ASCII username, phon
   assert.equal(withoutPhone.status, 201);
   assert.equal(withoutPhone.body.data.phone, null);
 
+  const userCountBeforeDuplicates = state.createdUsers.length;
+  const auditCountBeforeDuplicates = state.auditCreates().length;
   const duplicateUsername = await state.postUser({
     username: state.admin.username,
     password: 'Valid@Password123',
@@ -274,6 +299,9 @@ test('ADMIN can create every supported role with normalized ASCII username, phon
     role: 'INSTRUCTOR',
   });
   assert.equal(duplicateUsername.status, 409);
+  assert.equal(duplicateUsername.body.code, 'USER_CONFLICT');
+  assert.deepEqual(duplicateUsername.body.conflicts, ['username']);
+  assert.equal(state.createdUsers.length, userCountBeforeDuplicates);
 
   const duplicateEmail = await state.postUser({
     username: 'new-unique-username',
@@ -283,6 +311,99 @@ test('ADMIN can create every supported role with normalized ASCII username, phon
     role: 'INSTRUCTOR',
   });
   assert.equal(duplicateEmail.status, 409);
+  assert.equal(duplicateEmail.body.code, 'USER_CONFLICT');
+  assert.deepEqual(duplicateEmail.body.conflicts, ['email']);
+  assert.equal(state.createdUsers.length, userCountBeforeDuplicates);
+  assert.equal(state.auditCreates().length, auditCountBeforeDuplicates);
+
+  const duplicateBoth = await state.postUser({
+    username: state.admin.username,
+    password: 'Valid@Password123',
+    full_name: 'Duplicate Username And Email',
+    email: state.admin.email,
+    role: 'INSTRUCTOR',
+  });
+  assert.equal(duplicateBoth.status, 409);
+  assert.deepEqual(duplicateBoth.body.conflicts, ['username', 'email']);
+  assert.equal(state.createdUsers.length, userCountBeforeDuplicates);
+  assert.equal(state.auditCreates().length, auditCountBeforeDuplicates);
+});
+
+test('soft-deleted users continue reserving usernames and emails', async (t) => {
+  const state = await setup(t);
+  const deletedUsernameUser = makeUser(50);
+  deletedUsernameUser.username = 'deleted-username';
+  deletedUsernameUser.email = 'deleted-username@example.test';
+  deletedUsernameUser.deletedAt = new Date('2026-01-01T00:00:00.000Z');
+  state.users.set(deletedUsernameUser.id, deletedUsernameUser);
+  const deletedEmailUser = makeUser(51);
+  deletedEmailUser.username = 'deleted-email';
+  deletedEmailUser.email = 'deleted-email@example.test';
+  deletedEmailUser.deletedAt = new Date('2026-01-01T00:00:00.000Z');
+  state.users.set(deletedEmailUser.id, deletedEmailUser);
+
+  const usernameConflict = await state.postUser({
+    username: 'deleted-username',
+    password: 'Valid@Password123',
+    full_name: 'QA Username Conflict',
+    email: 'unique-username@example.test',
+    role: 'INSTRUCTOR',
+  });
+  assert.equal(usernameConflict.status, 409);
+  assert.deepEqual(usernameConflict.body.conflicts, ['username']);
+
+  const emailConflict = await state.postUser({
+    username: 'unique-email-username',
+    password: 'Valid@Password123',
+    full_name: 'QA Email Conflict',
+    email: 'deleted-email@example.test',
+    role: 'INSTRUCTOR',
+  });
+  assert.equal(emailConflict.status, 409);
+  assert.deepEqual(emailConflict.body.conflicts, ['email']);
+  assert.equal(deletedUsernameUser.deletedAt instanceof Date, true);
+  assert.equal(deletedEmailUser.deletedAt instanceof Date, true);
+  assert.equal(state.createdUsers.length, 0);
+});
+
+test('a P2002 race is translated into a safe field-specific conflict response', async (t) => {
+  const state = await setup(t, { createRaceConflict: 'username' });
+  const response = await state.postUser({
+    username: 'race-username',
+    password: 'Valid@Password123',
+    full_name: 'QA Race Conflict',
+    email: 'race-email@example.test',
+    role: 'INSTRUCTOR',
+  });
+
+  assert.equal(response.status, 409);
+  assert.equal(response.body.code, 'USER_CONFLICT');
+  assert.deepEqual(response.body.conflicts, ['username']);
+  assert.equal(JSON.stringify(response.body).includes('P2002'), false);
+  assert.equal(state.createdUsers.length, 0);
+});
+
+test('create-user validation failures do not leave a partial user or audit record', async (t) => {
+  const state = await setup(t);
+  const missingRequired = await state.postUser({
+    username: 'qa-missing-email',
+    password: 'Valid@Password123',
+    full_name: 'QA Missing Email',
+    role: 'INSTRUCTOR',
+  });
+  assert.equal(missingRequired.status, 400);
+
+  const invalidRole = await state.postUser({
+    username: 'qa-invalid-role',
+    password: 'Valid@Password123',
+    full_name: 'QA Invalid Role',
+    email: 'invalid-role@example.test',
+    role: 'SUPERUSER',
+  });
+  assert.equal(invalidRole.status, 400);
+  assert.equal(invalidRole.body.message, 'บทบาทผู้ใช้ไม่ถูกต้อง');
+  assert.equal(state.createdUsers.length, 0);
+  assert.equal(state.auditCreates().length, 0);
 });
 
 test('create-user accepts only canonical PSU Hat Yai organizations while keeping department optional', async (t) => {
