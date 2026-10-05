@@ -151,7 +151,7 @@ test('server uses the exam single-sided setting and canonical storage is indepen
 
 test('unsupported weights and exam paper sizes return 400 without creating print records', async (t) => {
   const unsupportedWeight = await setup(t);
-  const weightResponse = await unsupportedWeight.post({ paper_weight: '90gsm', mark_completed: true });
+  const weightResponse = await unsupportedWeight.post({ paper_weight: '120gsm', mark_completed: true });
   assert.equal(weightResponse.status, 400);
   assert.equal(weightResponse.body.code, 'UNSUPPORTED_PRINT_SPEC');
   assert.equal(unsupportedWeight.printRecords.length, 0);
@@ -162,4 +162,26 @@ test('unsupported weights and exam paper sizes return 400 without creating print
   assert.equal(sizeResponse.body.code, 'UNSUPPORTED_PRINT_SPEC');
   assert.equal(unsupportedSize.printRecords.length, 0);
   assert.equal(unsupportedSize.exam.paperSize, 'Letter');
+});
+
+test('100gsm is accepted and canonical values use authoritative exam settings regardless of UI language', async (t) => {
+  const doubleSided = await setup(t);
+  const doubleResponse = await doubleSided.post({
+    paper_weight: '100gsm',
+    paper_type: 'A4 80gsm client override',
+    paper_size: 'Letter',
+    is_double_sided: false,
+  }, 'en');
+  assert.equal(doubleResponse.status, 200);
+  assert.equal(doubleSided.printRecords[0].paperType, 'A4 100gsm หน้า-หลัง');
+  assert.doesNotMatch(doubleSided.auditLogs[0].detailJson, /client override/);
+
+  const singleSided = await setup(t, { isDoubleSided: false });
+  const singleResponse = await singleSided.post({ paper_weight: '100gsm' }, 'th');
+  assert.equal(singleResponse.status, 200);
+  assert.equal(singleSided.printRecords[0].paperType, 'A4 100gsm หน้าเดียว');
+  assert.deepEqual(
+    [doubleSided.printRecords[0].paperType, singleSided.printRecords[0].paperType],
+    ['A4 100gsm หน้า-หลัง', 'A4 100gsm หน้าเดียว'],
+  );
 });
