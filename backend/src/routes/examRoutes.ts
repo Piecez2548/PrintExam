@@ -126,6 +126,7 @@ export function formatExam(e: any) {
     // Course relations
     course_code: e.course ? e.course.courseCode : undefined,
     course_name: e.course ? e.course.courseName : undefined,
+    department: e.course ? e.course.department : undefined,
     semester: e.course ? e.course.semester : undefined,
     academic_year: e.course ? e.course.academicYear : undefined,
     instructor_id: e.course ? e.course.instructorId : undefined,

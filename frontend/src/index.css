@@ -56,29 +56,104 @@ html.dark {
   background: rgb(var(--color-text-muted));
 }
 
-/* Print Specific Rules for Official Envelope Label (REQ-0010) */
+/* Keep browser printing scoped to the same envelope DOM shown in the preview. */
+@page {
+  size: A4 portrait;
+  margin: 5mm;
+}
+
 @media print {
-  body * {
-    visibility: hidden;
+  html,
+  body {
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
   }
-  #printable-envelope, #printable-envelope * {
-    visibility: visible;
+
+  /* Remove non-cover UI, and collapse modal/application ancestors so their
+     flex centering, viewport height, transforms and overflow cannot offset it. */
+  body *:not(#printable-envelope):not(#printable-envelope *):not(:has(#printable-envelope)) {
+    display: none !important;
+    visibility: hidden !important;
   }
+
+  #root:has(#printable-envelope),
+  #root *:has(#printable-envelope) {
+    display: contents !important;
+    position: static !important;
+    inset: auto !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    contain: none !important;
+  }
+
   #printable-envelope {
-    position: absolute;
-    left: 0;
-    top: 0;
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
     width: 100%;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    box-sizing: border-box !important;
     border: 2px solid #000 !important;
     margin: 0 !important;
-    padding: 15px !important;
+    padding: 6mm !important;
     background: #fff !important;
     color: #000 !important;
     color-scheme: light !important;
+    box-shadow: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
+
   #printable-envelope,
   #printable-envelope * {
-    background-color: transparent !important;
+    visibility: visible !important;
     color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  #printable-envelope * {
+    background-color: transparent !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #printable-envelope img {
+    display: block !important;
+    max-width: 100% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    object-fit: contain;
+  }
+
+  #printable-envelope .print-cover-grid-course {
+    grid-template-columns: auto minmax(0, 1fr) auto 44mm !important;
+  }
+
+  #printable-envelope .print-cover-grid-details {
+    grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr) !important;
+  }
+
+  #printable-envelope .print-cover-grid-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  #printable-envelope > div:last-child {
+    border-color: #000 !important;
   }
 }
