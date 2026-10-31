@@ -8,6 +8,18 @@
 
 ---
 
+## At a glance (English)
+
+A full-stack web application that manages the university exam-printing workflow end to end: **submit → review → cut → print → pack → hand over**.
+
+- **Four roles:** Instructor, AV Staff, Exam Coordinator and Admin, each with its own permissions (RBAC), real-time status over WebSockets and an audit trail.
+- **Stack:** React 18 + TypeScript + Vite + Tailwind on the front end; Node.js, Express, Prisma and PostgreSQL (Supabase) on the back end; PDFKit for envelope cover sheets.
+- **Security:** short-lived OTP, HttpOnly session cookies, session revocation and audit logging.
+- **Live:** https://print-exam-khaki.vercel.app/ (accounts are created by an administrator; no public demo credentials).
+- **Docs:** see [`CODE-GUIDE-TH.md`](CODE-GUIDE-TH.md) for the code structure (Thai) and the setup steps below. The rest of this README is written in Thai.
+
+---
+
 ## 🛠️ Tech Stack & Architecture
 
 - **Backend**: Node.js, Express, TypeScript, **Prisma ORM**, **PostgreSQL (Supabase)**, WebSockets (`ws`), PDFKit (`pdfkit`), Multer, Bcrypt, JSON Web Token (JWT), Supabase Storage & Auth SDK (`@supabase/supabase-js`).
