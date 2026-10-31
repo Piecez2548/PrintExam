@@ -50,3 +50,5 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </ThemeProvider>
   </React.StrictMode>
 );
+
+// Redeploy trigger: repository migrated to a standalone repo (2026-10-31).
